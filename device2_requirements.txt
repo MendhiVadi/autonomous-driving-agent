@@ -1,0 +1,17 @@
+# Install this on Device 2 inside its own Python 3.11 virtual environment.
+carla==0.9.16
+numpy<2.0.0
+torch==2.13.0
+torchvision==0.28.0
+torchaudio==2.11.0
+opencv-python==4.10.0.84
+Pillow
+scikit-learn
+pandas
+matplotlib
+tensorboard
+tqdm
+PyYAML
+networkx
+Shapely
+psutil

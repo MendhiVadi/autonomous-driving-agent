@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">Manual transmission neural network prerequisite architecture</title>
+  <desc id="desc">Eleven planned inputs flow through two hidden layers to five planned driving outputs. Training has not started.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#07111f"/><stop offset="1" stop-color="#111c31"/></linearGradient>
+    <marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#5ac8fa"/></marker>
+  </defs>
+  <rect width="1280" height="720" rx="24" fill="url(#bg)"/>
+  <text x="64" y="68" fill="#f3f7fc" font-family="Segoe UI,Arial" font-size="34" font-weight="600">Manual-Gear Neural Driving Model</text>
+  <rect x="909" y="31" width="307" height="48" rx="24" fill="#583a08" stroke="#ffb84d"/>
+  <text x="1062" y="62" text-anchor="middle" fill="#ffd68b" font-family="Segoe UI,Arial" font-size="17">PREREQUISITES READY · TRAINING DISABLED</text>
+
+  <text x="75" y="126" fill="#8edcff" font-family="Segoe UI,Arial" font-size="20">11 INPUTS</text>
+  <text x="492" y="126" fill="#c8b6ff" font-family="Segoe UI,Arial" font-size="20">FEATURE LEARNING</text>
+  <text x="1025" y="126" fill="#8ef0ba" font-family="Segoe UI,Arial" font-size="20">5 OUTPUTS</text>
+
+  <g font-family="Segoe UI,Arial" font-size="16" fill="#e6edf7">
+    <g fill="#102b43" stroke="#5ac8fa" stroke-width="2">
+      <rect x="64" y="151" width="300" height="39" rx="10"/><rect x="64" y="197" width="300" height="39" rx="10"/>
+      <rect x="64" y="243" width="300" height="39" rx="10"/><rect x="64" y="289" width="300" height="39" rx="10"/>
+      <rect x="64" y="335" width="300" height="39" rx="10"/><rect x="64" y="381" width="300" height="39" rx="10"/>
+      <rect x="64" y="427" width="300" height="39" rx="10"/><rect x="64" y="473" width="300" height="39" rx="10"/>
+      <rect x="64" y="519" width="300" height="39" rx="10"/><rect x="64" y="565" width="300" height="39" rx="10"/>
+      <rect x="64" y="611" width="300" height="39" rx="10"/>
+    </g>
+    <text x="84" y="177">Lane error</text><text x="84" y="223">Heading error</text><text x="84" y="269">Speed</text>
+    <text x="84" y="315">Target speed</text><text x="84" y="361">Obstacle distance</text><text x="84" y="407">Traffic-light state</text>
+    <text x="84" y="453">Road curvature</text><text x="84" y="499">Stopped state</text>
+    <text x="84" y="545">Estimated engine RPM</text><text x="84" y="591">Current manual gear</text><text x="84" y="637">Clutch position</text>
+  </g>
+
+  <g stroke="#5ac8fa" stroke-width="3" fill="none" marker-end="url(#arrow)">
+    <path d="M378 400 C425 400 438 350 468 350"/><path d="M772 350 C830 350 864 350 920 350"/>
+  </g>
+  <g font-family="Segoe UI,Arial" text-anchor="middle">
+    <rect x="470" y="182" width="130" height="336" rx="24" fill="#251f47" stroke="#9d85ff" stroke-width="2"/>
+    <text x="535" y="237" fill="#e9e1ff" font-size="24">Dense</text><text x="535" y="274" fill="#bdaeff" font-size="36">32</text>
+    <text x="535" y="306" fill="#c7bedc" font-size="15">neurons</text>
+    <circle cx="535" cy="355" r="17" fill="#9d85ff"/><circle cx="535" cy="405" r="17" fill="#9d85ff"/><circle cx="535" cy="455" r="17" fill="#9d85ff"/>
+    <rect x="640" y="220" width="130" height="260" rx="24" fill="#251f47" stroke="#9d85ff" stroke-width="2"/>
+    <text x="705" y="274" fill="#e9e1ff" font-size="24">Dense</text><text x="705" y="311" fill="#bdaeff" font-size="36">24</text>
+    <text x="705" y="343" fill="#c7bedc" font-size="15">neurons</text>
+    <circle cx="705" cy="392" r="17" fill="#9d85ff"/><circle cx="705" cy="442" r="17" fill="#9d85ff"/>
+  </g>
+
+  <g font-family="Segoe UI,Arial" font-size="18" fill="#eafff3">
+    <g fill="#113a2a" stroke="#55dda0" stroke-width="2">
+      <rect x="930" y="203" width="286" height="56" rx="12"/><rect x="930" y="274" width="286" height="56" rx="12"/>
+      <rect x="930" y="345" width="286" height="56" rx="12"/><rect x="930" y="416" width="286" height="56" rx="12"/>
+      <rect x="930" y="487" width="286" height="56" rx="12"/>
+    </g>
+    <text x="954" y="238">Steering angle</text><text x="954" y="309">Accelerator</text><text x="954" y="380">Brake</text>
+    <text x="954" y="451">Clutch position</text><text x="954" y="522">Gear request R/N/1–6</text>
+  </g>
+  <rect x="465" y="603" width="750" height="55" rx="12" fill="#162235" stroke="#526277"/>
+  <text x="840" y="627" text-anchor="middle" fill="#c5d0de" font-family="Segoe UI,Arial" font-size="15">Safety supervisor remains outside the neural network</text>
+  <text x="840" y="648" text-anchor="middle" fill="#8fa1b8" font-family="Segoe UI,Arial" font-size="14">Reject unsafe shifts · prevent throttle/brake conflict · stop on hazards</text>
+  <text x="64" y="690" fill="#8fa1b8" font-family="Segoe UI,Arial" font-size="14">Current loaded baseline remains 8 → 24 → 16 → 3 and was not overwritten.</text>
+</svg>

@@ -1,0 +1,14 @@
+# Installed into CARLA_0.9.16\carla_env on 2026-08-21
+numpy<2.0.0
+future
+networkx
+Shapely
+pygame
+matplotlib
+open3d
+Pillow
+psutil
+py-cpuinfo
+GPUtil
+python-tr
+imageio

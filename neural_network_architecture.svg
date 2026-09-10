@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="760" viewBox="0 0 1400 760" role="img" aria-labelledby="title desc">
+  <title id="title">Current CARLA neural driving network</title>
+  <desc id="desc">Eight state inputs feed hidden layers of 24 and 16 neurons, producing steering, accelerator, and brake outputs. A separate safety supervisor can override the commands.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08111f"/><stop offset="1" stop-color="#10243c"/></linearGradient>
+    <linearGradient id="flow" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#54d7ff"/><stop offset="1" stop-color="#7d8cff"/></linearGradient>
+    <filter id="shadow"><feDropShadow dx="0" dy="10" stdDeviation="12" flood-opacity=".28"/></filter>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#54d7ff"/></marker>
+  </defs>
+  <rect width="1400" height="760" rx="30" fill="url(#bg)"/>
+  <text x="70" y="78" fill="#f5f8ff" font-family="Segoe UI,Arial" font-size="36" font-weight="600">CARLA Neural Driving Baseline</text>
+  <text x="70" y="116" fill="#9fb2c8" font-family="Segoe UI,Arial" font-size="20">Current saved policy: 8 → 24 → 16 → 3 • state/map based • inference only by default</text>
+  <g font-family="Segoe UI,Arial" filter="url(#shadow)">
+    <rect x="60" y="165" width="300" height="460" rx="24" fill="#102b42" stroke="#2b6481"/>
+    <text x="90" y="210" fill="#54d7ff" font-size="22" font-weight="600">8 INPUT FEATURES</text>
+    <g fill="#eaf3ff" font-size="20">
+      <text x="95" y="258">1  Lane error</text><text x="95" y="302">2  Heading error</text>
+      <text x="95" y="346">3  Current speed</text><text x="95" y="390">4  Target speed</text>
+      <text x="95" y="434">5  Front obstacle distance</text><text x="95" y="478">6  Red-light state</text>
+      <text x="95" y="522">7  Road curvature</text><text x="95" y="566">8  Stopped state</text>
+    </g>
+    <rect x="470" y="220" width="220" height="340" rx="110" fill="#18305e" stroke="#5777ff"/>
+    <text x="580" y="365" text-anchor="middle" fill="#f5f8ff" font-size="28" font-weight="600">HIDDEN 1</text>
+    <text x="580" y="406" text-anchor="middle" fill="#aebcff" font-size="22">24 neurons</text>
+    <text x="580" y="441" text-anchor="middle" fill="#aebcff" font-size="18">tanh activation</text>
+    <rect x="790" y="255" width="200" height="270" rx="100" fill="#20345d" stroke="#7d8cff"/>
+    <text x="890" y="365" text-anchor="middle" fill="#f5f8ff" font-size="28" font-weight="600">HIDDEN 2</text>
+    <text x="890" y="406" text-anchor="middle" fill="#c0c9ff" font-size="22">16 neurons</text>
+    <text x="890" y="441" text-anchor="middle" fill="#c0c9ff" font-size="18">tanh activation</text>
+    <rect x="1090" y="205" width="250" height="370" rx="24" fill="#133744" stroke="#41c8bd"/>
+    <text x="1120" y="250" fill="#58e1d5" font-size="22" font-weight="600">3 OUTPUTS</text>
+    <g fill="#effffd" font-size="21"><text x="1125" y="315">Steering angle</text><text x="1125" y="375">Accelerator</text><text x="1125" y="435">Brake</text></g>
+    <rect x="1120" y="478" width="190" height="66" rx="16" fill="#0b202b" stroke="#ffb84d"/>
+    <text x="1215" y="506" text-anchor="middle" fill="#ffca72" font-size="16" font-weight="600">SAFETY SUPERVISOR</text>
+    <text x="1215" y="530" text-anchor="middle" fill="#d8e1ea" font-size="14">can override unsafe output</text>
+  </g>
+  <g stroke="url(#flow)" stroke-width="5" fill="none" marker-end="url(#arrow)"><path d="M365 390 H455"/><path d="M700 390 H775"/><path d="M1000 390 H1075"/></g>
+  <g font-family="Segoe UI,Arial" font-size="18"><text x="70" y="690" fill="#ffca72">Not yet included:</text><text x="215" y="690" fill="#c7d3e1">camera/LiDAR perception, trained parking policy, held-out route validation, or real-world deployment.</text></g>
+</svg>

@@ -1,0 +1,40 @@
+{
+  "status": "prerequisites_ready_training_disabled",
+  "training_enabled": false,
+  "vehicle": "vehicle.ford.mustang",
+  "transmission": {
+    "reverse_gear": -1,
+    "neutral_gear": 0,
+    "forward_gears": [1, 2, 3, 4, 5, 6],
+    "clutch_range": [0.0, 1.0],
+    "rpm_source": "estimated_from_speed_gear_ratios_final_drive_and_tyre_size",
+    "rpm_range": [850, 6500]
+  },
+  "future_model_inputs": [
+    "lane_error",
+    "heading_error",
+    "speed_kmh",
+    "target_speed_kmh",
+    "front_obstacle_distance_m",
+    "red_light",
+    "curvature",
+    "stopped",
+    "engine_rpm_normalized",
+    "current_gear_normalized",
+    "clutch_position"
+  ],
+  "future_model_outputs": [
+    "steering",
+    "accelerator",
+    "brake",
+    "clutch",
+    "gear_request"
+  ],
+  "safety_rules": [
+    "reject_moving_shift_without_clutch",
+    "never_apply_accelerator_and_brake_together",
+    "clamp_gear_to_reverse_neutral_or_1_through_6",
+    "safety_supervisor_can_override_motion"
+  ],
+  "note": "The existing 8-24-16-3 baseline remains loadable and was not retrained or overwritten."
+}
