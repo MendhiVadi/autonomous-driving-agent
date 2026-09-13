@@ -1,0 +1,25 @@
+{
+  "updated": "2026-09-10 00:29:20",
+  "supervisor_pid": 30608,
+  "thermal_hold": "",
+  "components": {
+    "carla": {
+      "running": true,
+      "ready": true,
+      "pid": 23304,
+      "uptime_s": 1134.1,
+      "restarts": 0,
+      "gave_up": false,
+      "log": "C:\\Users\\medha\\Desktop\\Autonomous driving agent\\logs\\carla.log"
+    },
+    "neural": {
+      "running": true,
+      "ready": true,
+      "pid": 18512,
+      "uptime_s": 309.9,
+      "restarts": 0,
+      "gave_up": false,
+      "log": "C:\\Users\\medha\\Desktop\\Autonomous driving agent\\logs\\neural.log"
+    }
+  }
+}

@@ -1,0 +1,3 @@
+# Additional video dependency; this version is installed and tested locally.
+opencv-python==4.10.0.84
+numpy==1.26.4

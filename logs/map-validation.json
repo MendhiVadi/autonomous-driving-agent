@@ -1,0 +1,9 @@
+{
+  "exit_code": 0,
+  "duration_s": 26.4,
+  "distance_m": 150.9,
+  "max_speed_kmh": 12.0,
+  "unique_world_frames": 421,
+  "remaining_actors": [],
+  "log": "C:\\Users\\medha\\Desktop\\Autonomous driving agent\\logs\\map-validation.log"
+}

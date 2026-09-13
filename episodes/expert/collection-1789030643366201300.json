@@ -1,0 +1,79 @@
+{
+  "finished": true,
+  "episodes_written": 12,
+  "output_dir": "episodes\\expert",
+  "episodes": [
+    {
+      "episode": 1,
+      "status": "complete",
+      "path": "episodes\\expert\\expert-town02_opt-7-001-1789030643366201300.jsonl",
+      "distance_m": 264.8
+    },
+    {
+      "episode": 2,
+      "status": "complete",
+      "path": "episodes\\expert\\expert-town02_opt-7-002-1789030643366201300.jsonl",
+      "distance_m": 395.1
+    },
+    {
+      "episode": 3,
+      "status": "complete",
+      "path": "episodes\\expert\\expert-town02_opt-7-003-1789030643366201300.jsonl",
+      "distance_m": 233.1
+    },
+    {
+      "episode": 4,
+      "status": "complete",
+      "path": "episodes\\expert\\expert-town02_opt-7-004-1789030643366201300.jsonl",
+      "distance_m": 270.6
+    },
+    {
+      "episode": 5,
+      "status": "complete",
+      "path": "episodes\\expert\\expert-town02_opt-7-005-1789030643366201300.jsonl",
+      "distance_m": 330.9
+    },
+    {
+      "episode": 6,
+      "status": "complete",
+      "path": "episodes\\expert\\expert-town02_opt-7-006-1789030643366201300.jsonl",
+      "distance_m": 323.9
+    },
+    {
+      "episode": 7,
+      "status": "complete",
+      "path": "episodes\\expert\\expert-town02_opt-7-007-1789030643366201300.jsonl",
+      "distance_m": 361.5
+    },
+    {
+      "episode": 9,
+      "status": "complete",
+      "path": "episodes\\expert\\expert-town02_opt-7-009-1789030643366201300.jsonl",
+      "distance_m": 516.9
+    },
+    {
+      "episode": 11,
+      "status": "complete",
+      "path": "episodes\\expert\\expert-town02_opt-7-011-1789030643366201300.jsonl",
+      "distance_m": 343.8
+    },
+    {
+      "episode": 12,
+      "status": "complete",
+      "path": "episodes\\expert\\expert-town02_opt-7-012-1789030643366201300.jsonl",
+      "distance_m": 269.3
+    },
+    {
+      "episode": 13,
+      "status": "complete",
+      "path": "episodes\\expert\\expert-town02_opt-7-013-1789030643366201300.jsonl",
+      "distance_m": 324.0
+    },
+    {
+      "episode": 14,
+      "status": "complete",
+      "path": "episodes\\expert\\expert-town02_opt-7-014-1789030643366201300.jsonl",
+      "distance_m": 321.2
+    }
+  ]
+}

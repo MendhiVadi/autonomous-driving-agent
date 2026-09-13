@@ -1,0 +1,5 @@
+pygame 2.6.1 (SDL 2.28.4, Python 3.11.9)
+Hello from the pygame community. https://www.pygame.org/contribute.html
+INFO:  Found the required file in cache!  Carla/Maps/Nav/Town10HD_Opt.bin 
+Vehicle spawned: id=24, map=Carla/Maps/Town10HD_Opt
+P/R/N/D=gear, W=accelerator, S=brake, A/D=steer, H=handbrake, Backspace=reset, C=weather

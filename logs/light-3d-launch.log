@@ -1,0 +1,31 @@
+HEALTH OK: no recent thermal or hardware faults
+Starting one low-load CARLA server...
+Waiting for the CARLA world to finish loading...
+CARLA is ready. Opening safe practice mode.
+pygame 2.6.1 (SDL 2.28.4, Python 3.11.9)
+Hello from the pygame community. https://www.pygame.org/contribute.html
+[startup] CARLA client connected
+INFO:  Found the required file in cache!  Carla/Maps/Nav/Town10HD_Opt.bin 
+[startup] loading map Town02_Opt
+INFO:  Could not find the required file in cache, downloading...  Carla/Maps/Nav/Town02_Opt.bin 
+INFO:  Could not find the required file in cache, downloading...  Carla/Maps//OpenDrive/Town02_Opt.xodr 
+INFO:  Found the required file in cache!  Carla/Maps//Nav/Town02_Opt.bin 
+INFO:  Could not find the required file in cache, downloading...  Carla/Maps//TM/Town02_Opt.bin 
+[startup] low scenery: clear dry daylight, no weather animation or optional effects
+[startup] world ready: Carla/Maps/Town02_Opt
+[startup] vehicle ready: 70
+[startup] six-speed transmission ready: {"ratios": [12.93, 7.76, 5.54, 4.31, 3.69, 3.23], "redline_kmh": [12.0, 20.0, 28.0, 36.0, 42.0, 48.0], "max_rpm": 6000, "torque_curve_end_rpm": 6000}
+[startup] physics: fixed 0.05s step, 0.01s substeps
+[startup] camera ready: front (71)
+[startup] camera profile ready: safe (1 sensor(s))
+[startup] minimap topology ready: 112 segments
+Vehicle spawned: id=70, map=Carla/Maps/Town02_Opt
+[route] controller: deployable neural policy only; no BasicAgent control fallback
+CLICK cockpit first. W/Up=accelerator, S/Down=brake, A/D or arrows=steer
+M=destination map, click road=route drive, manual input=cancels route
+Shift/Ctrl=clutch, comma/period=shift down/up, 1-6=direct gear, R/N/P=selector, Space=handbrake
+[control] {"focused": false, "keys": [], "throttle": 0.0, "brake": 1.0, "steer": 0.0, "hand_brake": false, "gear": 1}
+[runtime] cockpit snapshot saved: C:\Users\medha\Desktop\Autonomous driving agent\logs\practice-safe.png
+[performance] {"render_fps": 18.3, "view_updates_fps": {"front": 18.5, "rear": 0.0, "left": 0.0, "right": 0.0}}
+[performance] {"render_fps": 19.7, "view_updates_fps": {"front": 0.0, "rear": 0.0, "left": 0.0, "right": 0.0}}
+Stopping the practice CARLA server cleanly.

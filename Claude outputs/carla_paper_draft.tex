@@ -1,0 +1,433 @@
+% =====================================================================
+%  DRAFT MANUSCRIPT v0.3 -- INCOMPLETE. NOT FOR CIRCULATION.
+%  Autonomous Driving Agent / CARLA 0.9.16
+%  Compile on Overleaf with pdfLaTeX. Class: IEEEtran (conference).
+%
+%  STATUS OF THIS FILE
+%    Sections I-V   : drafted
+%    Section  VI    : RENDERING FAILURES -- drafted, needs measured numbers
+%    Section  VII   : RESULTS -- deliberately empty, corpus does not exist
+%    Section  VIII  : DISCUSSION -- stub
+%    Section  IX    : CONCLUSION -- unwritten
+%    References     : partial, renumber after additions
+%  Search for "TODO" to find every open item.
+% =====================================================================
+
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\usepackage{xcolor}
+\usepackage{textcomp}
+\usepackage{framed}
+\usepackage[hidelinks]{hyperref}
+
+% --- helper for the visible "unfinished" markers -------------------
+% Open items appear as grey side-barred notes. Delete the \TODO calls
+% (and this definition) once each section is finished.
+\colorlet{shadecolor}{white}
+\newcommand{\TODO}[1]{%
+  \begingroup
+  \setlength{\FrameSep}{4pt}%
+  \def\FrameCommand{{\color{gray!55}\vrule width 1.2pt}\hspace{5pt}}%
+  \MakeFramed{\advance\hsize-\width \FrameRestore}%
+  \noindent\scriptsize\itshape\color{gray!80}#1%
+  \endMakeFramed
+  \endgroup}
+
+\newcommand{\UNWRITTEN}[1]{\par\noindent{\itshape\color{gray!85}#1}\par\vspace{2pt}}
+
+% Same kind of note, but breakable across a column (a framed box is not).
+\newcommand{\TODOflow}[1]{%
+  \par\noindent{\scriptsize\itshape\color{gray!80}#1\par}}
+
+\begin{document}
+
+\title{A Contract-Gated Imitation Learning Stack for Autonomous Driving
+in CARLA, and the Rendering Failures That Gate Its Data Collection\\[3pt]
+{\normalsize\color{red!65!black}\bfseries DRAFT v0.3 --- INCOMPLETE MANUSCRIPT --- NOT FOR CIRCULATION}}
+
+\author{
+\IEEEauthorblockN{
+Medhansh Khattar (25BAI10672),\quad
+Prashant Kumar Jaglan (25BAI10750),\quad
+Yash Yadav (25BAI10545)\\[2pt]
+Samyak Jain (25BAI10746),\quad
+Sanchit Kumar Sinha (25BAI10229),\quad
+Aryan Garg (25BAI10215)}
+\IEEEauthorblockA{School of Computer Science and Engineering\\
+Vellore Institute of Technology, Bhopal, India}
+}
+
+\maketitle
+
+% =====================================================================
+\begin{abstract}
+Learning a driving policy from demonstration is usually reported as a
+modelling result. In our experience the binding constraint has been
+elsewhere: we cannot reliably render the environment. This paper
+describes an imitation-learning stack built on CARLA 0.9.16 around a
+deliberately small state-based policy (an
+$8\rightarrow24\rightarrow16\rightarrow3$ perceptron, 667 parameters)
+and three explicit contracts: an eight-field observation contract, a
+seven-field action protocol, and a deployability contract an artifact
+must satisfy before it may drive. An independent safety supervisor,
+outside the learned policy, retains full braking authority. We report
+the demonstration protocol and the route-level split that avoids
+frame-level leakage; we then report, at length, the rendering
+failures that dominate the project. The final camera image
+cannot be rendered at speed on an integrated GPU, environment streaming
+stalls the simulator, and the resulting crashes destroy episodes
+mid-route. Because our acceptance rule discards any interrupted route,
+these crashes propagate directly into an empty training corpus.
+\textit{Quantitative evaluation is therefore unavailable: the accepted
+corpus stands at zero routes of a twelve-route target, and no artifact
+satisfies the v2 contract. Results are reserved for Sections~VII--IX and
+remain unwritten.}
+\end{abstract}
+
+\begin{IEEEkeywords}
+autonomous driving, imitation learning, behaviour cloning, CARLA,
+rendering bottleneck, safety supervision, reproducibility.
+\end{IEEEkeywords}
+
+% =====================================================================
+\section{Introduction}
+
+Simulation is the default proving ground for learned driving policies,
+and CARLA~\cite{carla} is the most widely adopted open platform: it
+exposes an Unreal Engine world over an RPC interface, supplies OpenDRIVE
+road topology, traffic and weather, and permits deterministic replay of
+a seeded route. Failures cost nothing --- provided the simulation runs
+at all.
+
+Much of the literature following Bojarski \textit{et al.}~\cite{bojarski}
+maps camera pixels directly to control. We take a narrower first step:
+our policy consumes eight route-relative scalars rather than images. The
+motivation is the size of the demonstration corpus a six-person
+undergraduate team can realistically curate --- with a few thousand
+frames a larger network memorises the road geometry of the training town
+instead of learning to hold a lane~\cite{limits}. Our contribution is an
+engineering one: the architecture, the contracts holding it together,
+and --- centrally --- the rendering and stability failures met in
+building it. Where a driving result would ordinarily appear, this draft
+states plainly that it does not yet exist, and Section~VI explains why.
+
+% =====================================================================
+\section{Related Work}
+
+End-to-end behaviour cloning for driving was demonstrated at scale
+by~\cite{bojarski}. Codevilla \textit{et al.}~\cite{cil} added a
+high-level command input for intersection ambiguity, and later
+documented behaviour cloning's own limitations~\cite{limits}:
+distributional shift and bias toward the modal action. Ross \textit{et
+al.}~\cite{dagger} give the standard remedy, DAgger. Within CARLA,
+Learning by Cheating~\cite{lbc} shows privileged-to-sensorimotor
+distillation outperforming direct cloning, and
+TransFuser~\cite{transfuser} sets the multi-modal baseline; our
+observation contract is closer to the privileged stage of~\cite{lbc}.
+
+\TODO{TODO --- RELATED WORK. Not yet cited, still to be read and added:
+(i) Toromanoff \textit{et al.}, implicit affordances (CVPR 2020), and
+where our reward logging sits relative to it; (ii) Kiran \textit{et
+al.}, DRL survey (T-ITS 2021), for positioning; (iii) SAE J3016, so the
+autonomy claim is precise; (iv) prior work on simulator throughput and
+headless rendering --- unsurveyed, and directly relevant to Section~VI.
+Owner: unassigned.}
+
+% =====================================================================
+\section{System Architecture}
+
+The stack spans two machines on a direct Ethernet link. Machine~1 runs
+the CARLA server and owns the world: physics, the OpenDRIVE map, traffic
+manager, sensors and the vehicle. Machine~2 runs policy inference, the
+route planner, an observer window and network visualisation. Each
+iteration: machine~1 publishes world state; machine~2 runs the planner
+and policy; machine~2 returns a driving command; machine~1's safety
+layer validates it and only then applies it.
+
+The map is deliberately split: CARLA's physical map stays on machine~1
+because the simulator owns the world, while the navigation map that
+picks a destination and computes waypoints may live on machine~2,
+needing only road topology. A watchdog on machine~1 should brake fully
+if the link drops; it is implemented but untested under induced failure.
+
+% =====================================================================
+\section{Methodology}
+
+\subsection{Observation contract}
+
+One module, \texttt{policy\_contract.py}, authoritatively defines what
+the network sees: eight scalars, each clamped by a shared normaliser
+(Table~\ref{tab:obs}).
+
+\begin{table}[htbp]
+\caption{The eight-field observation contract}
+\label{tab:obs}
+\centering\scriptsize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}L{2.25cm}L{1.4cm}L{2.0cm}L{1.45cm}@{}}
+\toprule
+Field & Meaning & Field & Meaning \\
+\midrule
+\texttt{lane\_error\_m}     & offset from lane centre & \texttt{front\_obst\_m} & nearest car ahead \\
+\texttt{heading\_err\_deg}  & car vs.\ road angle & \texttt{red\_light}     & binary: light governs \\
+\texttt{speed\_kmh}         & current road speed      & \texttt{curvature}      & bend $\approx$8\,m ahead \\
+\texttt{target\_spd\_kmh}   & speed controller wants  & \texttt{stopped}        & binary: $<$1\,km/h \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Route-relative rather than world coordinates is what allows a policy
+trained on one town to be evaluated on another. One gap is open: the
+route-reference waypoint used for heading and curvature at training time
+is not yet supplied identically at inference, so a train/serve skew
+remains possible on two fields. Any result reported before it is closed
+would be unsound.
+
+\subsection{Action protocol and safety supervision}
+
+The policy emits three values; the vehicle interface accepts seven.
+Steering lies in $[-1,+1]$ and maps to $\pm70^{\circ}$; accelerator and
+brake are clamped to $[0,1]$, and the runtime refuses to apply a
+meaningful accelerator and brake simultaneously. The final layer is
+linear --- all clamping is done by the runtime, not the network. The
+remaining four fields (clutch, handbrake, wipers, gear) come from a
+deterministic six-speed transmission model, and engine speed, which
+CARLA does not simulate, is derived from road speed and gear ratio and
+labelled \emph{estimated telemetry} wherever displayed.
+
+A safety supervisor runs on the simulator host, outside the policy, and
+forces a full brake on any of: collision, sensor timeout, a command
+older than 0.5\,s, lane error above 2\,m, an obstacle within 7\,m, speed
+above 50\,km/h, a red light, or invalid telemetry. It is the only
+component permitted to override the network.
+
+\subsection{Demonstration collection}
+
+Two experts are used: CARLA's rule-based \texttt{BasicAgent}, and a
+human at a six-zone cockpit. A route runs from spawn to a destination at
+least 150\,m away, and every tick writes one JSONL row holding the eight
+observations, the expert's three controls, telemetry and metadata. A
+route is promoted only if it is collision-free, completed, and holds
+$\geq$100 samples; crashes and interrupted runs are discarded rather
+than truncated. \textbf{This rule is the mechanism by which the
+rendering failures of Section~VI convert into missing data.}
+
+All accepted recordings use Town05, with Town04 held out as an unseen
+map so a good score cannot be explained by memorised road geometry.
+Twelve Town04 teacher episodes recorded before this rule was adopted
+were quarantined rather than deleted.
+
+\subsection{Training pipeline}
+
+Training is offline, in a Colab notebook, and produces a JSON artifact
+the local driver loads directly. The model is a linear
+$8\!\rightarrow\!24$ layer, $\tanh$, $24\!\rightarrow\!16$, $\tanh$, and
+a linear $16\!\rightarrow\!3$ head: 667 parameters. Optimisation uses
+AdamW ($\mathrm{lr}=10^{-3}$, weight decay $10^{-5}$) against mean
+squared error on the three control channels, batch size 128, at most 80
+epochs, early stopping after 12 without improvement. A single seed~(7)
+is set across Python, NumPy and PyTorch; training runs on CPU.
+
+The split is taken at route level, 70/15/15, never at frame level.
+Consecutive frames within a route are near-identical, so a random frame
+split places duplicates in both training and test sets and renders the
+reported error meaningless. Each episode goes to exactly one split, and
+an assertion confirms the sets are disjoint. The notebook generates its
+normaliser verbatim from the contract file, so training-time
+normalisation cannot diverge from inference-time.
+
+\subsection{Deployability gate}
+
+An exported artifact carries a policy-contract version, a
+\texttt{deployable} flag and the episode names in each split. The live
+driver refuses any artifact whose contract version is not v2 or whose
+flag is false. At present only a synthetic smoke-test artifact exists
+(contract v1, \texttt{deployable: false}), so it is refused and route
+mode is unavailable --- and there is no scripted-agent fallback, so the
+car is simply not driven autonomously. Training is hard-disabled at
+runtime, so the deployed system cannot modify its weights.
+
+One runtime behaviour must be declared, since it is not learned: cloning
+over-represents braking, so the policy stalls on a clear road. A bounded
+recovery capped at 0.35 accelerator releases it, disabled instantly by a
+red light, an obstacle or invalid telemetry, and never edits the
+weights. Any result must state whether it was active.
+
+% =====================================================================
+\section{Experimental Setup (partial)}
+
+The scenario catalogue defines four categories so a policy can be
+stressed across road type and traffic density without hard-coding a map:
+urban (Town03/04/05/10HD, 30 NPCs), highway (Town05/06/07, 20), rural
+(Town01/02, 12) and intersection (Town03/04, 40), with eight weather
+presets and three pothole modes. These are \emph{configured} definitions
+only --- \textbf{no category has yet completed a verified evaluation
+run}, for the reasons in Section~VI.
+
+\TODO{TODO --- SECTION V. Missing: a hardware table for both machines;
+control-loop latency over the link (mean, p99); headless tick rate; the
+commit hash for the reported runs.}
+
+% =====================================================================
+\section{The Rendering Bottleneck}
+
+This section is the honest centre of the paper. The dominant obstacle
+has not been the learning algorithm; it has been getting the environment
+and the final camera image to render at all, for long enough to complete
+a single route.
+
+\subsection{The final image will not render at speed}
+
+The visual cockpit composites four camera feeds alongside streamed
+scenery. On an Intel Arc~140V integrated GPU this saturates the device:
+the frame rate collapses as road speed rises, because faster travel
+forces Unreal to stream new scenery while the same device is already
+compositing the camera panel. The failure is not graceful: the image
+stalls, the client falls behind the server tick, commands go stale.
+
+Two mitigations are in place, both costing realism. The default neural
+path runs \emph{headless}, with no camera feeds rendered at all. On the
+visual build, throttle is removed above 42\,km/h and top speed capped at
+48\,km/h purely to protect the GPU. The consequence must be stated: the
+speed range for visual demonstrations is bounded by a rendering limit
+rather than a driving decision, so no highway-speed behaviour can
+currently be demonstrated.
+
+\subsection{Environment rendering stalls crash the stack}
+
+Environment rendering fails in three ways, all ending the episode:
+
+\begin{itemize}
+\setlength{\itemsep}{1pt}\setlength{\topsep}{2pt}
+\setlength{\parskip}{0pt}\setlength{\partopsep}{0pt}
+\item \textbf{Thermal termination.} The integrated GPU shares a thermal
+package with the CPU. Sustained rendering drove a fatal hardware error
+and a critical-thermal hibernation in one afternoon. No live temperature
+counter is exposed here, so a health guard reads the Windows Event Log
+instead and refuses to launch inside a 30- or 60-minute cooldown.
+\item \textbf{Silent process death.} A rendering component wedges,
+Windows kills it as a hung application, and the stack goes down. Nothing
+was logged originally, because the launcher fired everything into
+detached tasks whose output went nowhere. One supervisor now owns both
+processes, writes real logs, probes CARLA's RPC port for liveness rather
+than trusting a PID, and restarts with 5\,s\,$\rightarrow$\,120\,s
+backoff.
+\item \textbf{Orphaned renderers.} \texttt{CarlaUE4.exe} is a shim
+around another executable, and the virtualenv \texttt{python.exe}
+re-executes the real interpreter as a child. Killing the visible process
+left the real renderer holding port 2000, so the next launch fought the
+corpse of the previous one. The supervisor now kills process trees and
+sweeps orphans at startup.
+\end{itemize}
+
+\subsection{Why this empties the training corpus}
+
+These are not merely operational annoyances; they are why Section~VII is
+blank. A rendering stall interrupts a route in progress, and by the rule
+of Section~IV-C an interrupted route is discarded rather than kept --- a
+deliberate choice, since a route ending in a crash teaches the policy
+that crashing is normal. The two rules compose badly: the more the
+environment fails to render, the fewer routes survive, and at present
+\textbf{zero routes have been accepted} of twelve. The model is not
+failing to learn; it has not been given anything to learn from.
+
+\TODO{TODO --- SECTION VI. Qualitative; make quantitative before
+submission. Needed: (a) a figure of FPS vs.\ road speed, headless vs.\
+visual; (b) mean route survival time before a rendering-induced
+termination; (c) counts per failure class; (d) package temperature at
+termination (unobtainable --- state the limitation); (e) whether the
+two-machine split relieves the bottleneck.}
+
+% =====================================================================
+\section{Results}
+
+\UNWRITTEN{This section is not yet written.}
+
+The corpus does not exist, for the reasons in Section~VI, and a training
+loss against the smoke-test artifact would be misleading. To prevent
+metric selection after the fact, the reporting format is fixed now:
+collisions per 100\,km, lane departures per km, route completion rate,
+safety interventions per route, and per-channel MAE --- each for the
+rule-based baseline and the learned policy on the held-out map, and
+every one of them \emph{pending}.
+
+\TODO{TODO --- SECTION VII. Prerequisites, in order: (1) stabilise
+rendering so a 150\,m route survives end-to-end; (2) accept $\geq$12
+Town05 routes; (3) close the train--serve skew of Section~IV-A; (4)
+export a contract-v2 artifact with \texttt{deployable = true}; (5) run
+the Town04 evaluation with the stall assist on and off. No prose before
+(5) completes.}
+
+% =====================================================================
+\section{Discussion}
+
+\UNWRITTEN{Stub. Only observations independent of quantitative results
+are recorded.}
+
+The project's time went to rendering and process management rather than
+modelling, worth reporting because it is absent from the work that
+motivated ours. Every result in \cite{lbc, transfuser} presupposes a
+simulator that renders reliably; where that fails, the bottleneck moves
+somewhere the literature does not discuss.
+
+\TODO{TODO --- SECTION VIII. Once VII exists: (a) a leakage demo ---
+error under route- vs.\ frame-level splitting; (b) a failure taxonomy
+from Town04; (c) what eight scalars cannot represent (pedestrians,
+signs, any cue needing vision); (d) whether headless collection biases
+the policy relative to the visual build.}
+
+% =====================================================================
+\section{Conclusion and Future Work}
+
+\UNWRITTEN{[Not written. To be drafted after Sections~VI and~VII are
+complete.]}
+
+Placeholder for planned direction: resolving the rendering bottleneck,
+if necessary by relocating the renderer to dedicated hardware; migration
+from eight scalars to RGB, depth and semantic segmentation; conditional
+imitation learning~\cite{cil}; DAgger-style correction~\cite{dagger};
+and a curriculum across the catalogue. Reward logging already runs each
+tick, but no online loop consumes it.
+
+% =====================================================================
+\begin{thebibliography}{99}
+\footnotesize
+\setlength{\itemsep}{0pt}\setlength{\parsep}{0pt}
+
+\bibitem{carla} A. Dosovitskiy \textit{et al.}, ``CARLA: An Open Urban
+Driving Simulator,'' \emph{CoRL}, 2017. arXiv:1711.03938.
+
+\bibitem{bojarski} M. Bojarski \textit{et al.}, ``End to End Learning
+for Self-Driving Cars,'' NVIDIA, 2016. arXiv:1604.07316.
+
+\bibitem{cil} F. Codevilla \textit{et al.}, ``End-to-end Driving via
+Conditional Imitation Learning,'' \emph{ICRA}, 2018. arXiv:1710.02410.
+
+\bibitem{limits} F. Codevilla \textit{et al.}, ``Exploring the
+Limitations of Behavior Cloning for Autonomous Driving,'' \emph{ICCV},
+2019.
+
+\bibitem{dagger} S. Ross, G. Gordon, and J. A. Bagnell, ``A Reduction of
+Imitation Learning and Structured Prediction to No-Regret Online
+Learning,'' \emph{AISTATS}, 2011. arXiv:1011.0686.
+
+\bibitem{lbc} D. Chen \textit{et al.}, ``Learning by Cheating,''
+\emph{CoRL}, 2019. arXiv:1912.12294.
+
+\bibitem{transfuser} A. Prakash, K. Chitta, and A. Geiger,
+``Multi-Modal Fusion Transformer for End-to-End Autonomous Driving,''
+\emph{CVPR}, 2021.
+
+\end{thebibliography}
+
+\TODOflow{TODO --- REFERENCES incomplete: add CARLA docs, OpenDRIVE,
+rendering refs.}
+
+\end{document}

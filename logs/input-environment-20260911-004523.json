@@ -1,0 +1,7 @@
+{
+  "passed": false,
+  "requested_seconds": 180.0,
+  "model_weights_changed": false,
+  "training_data_written": false,
+  "error": "CARLA startup timed out"
+}

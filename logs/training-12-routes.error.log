@@ -1,0 +1,7 @@
+The cockpit exited with code -1.
+At C:\Users\medha\Desktop\Autonomous driving agent\run_practice.ps1:166 char:9
++         throw "The cockpit exited with code $LASTEXITCODE."
++         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationStopped: (The cockpit exited with code -1.:String) [], RuntimeException
+    + FullyQualifiedErrorId : The cockpit exited with code -1.
+ 

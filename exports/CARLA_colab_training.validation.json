@@ -1,0 +1,105 @@
+{
+  "validated": true,
+  "contract_version": 2,
+  "episodes": [
+    {
+      "file": "expert-town02_opt-7-001-1789030643366201300.jsonl",
+      "samples": 734,
+      "distance_m": 264.8,
+      "red_light_samples": 0,
+      "lane_departure_samples": 7,
+      "map": "Town02_Opt"
+    },
+    {
+      "file": "expert-town02_opt-7-002-1789030643366201300.jsonl",
+      "samples": 2340,
+      "distance_m": 395.1,
+      "red_light_samples": 15,
+      "lane_departure_samples": 13,
+      "map": "Town02_Opt"
+    },
+    {
+      "file": "expert-town02_opt-7-003-1789030643366201300.jsonl",
+      "samples": 1807,
+      "distance_m": 233.1,
+      "red_light_samples": 122,
+      "lane_departure_samples": 5,
+      "map": "Town02_Opt"
+    },
+    {
+      "file": "expert-town02_opt-7-004-1789030643366201300.jsonl",
+      "samples": 986,
+      "distance_m": 270.6,
+      "red_light_samples": 0,
+      "lane_departure_samples": 0,
+      "map": "Town02_Opt"
+    },
+    {
+      "file": "expert-town02_opt-7-005-1789030643366201300.jsonl",
+      "samples": 1754,
+      "distance_m": 330.9,
+      "red_light_samples": 123,
+      "lane_departure_samples": 0,
+      "map": "Town02_Opt"
+    },
+    {
+      "file": "expert-town02_opt-7-006-1789030643366201300.jsonl",
+      "samples": 1939,
+      "distance_m": 323.9,
+      "red_light_samples": 648,
+      "lane_departure_samples": 12,
+      "map": "Town02_Opt"
+    },
+    {
+      "file": "expert-town02_opt-7-007-1789030643366201300.jsonl",
+      "samples": 1502,
+      "distance_m": 361.5,
+      "red_light_samples": 0,
+      "lane_departure_samples": 0,
+      "map": "Town02_Opt"
+    },
+    {
+      "file": "expert-town02_opt-7-009-1789030643366201300.jsonl",
+      "samples": 2361,
+      "distance_m": 516.9,
+      "red_light_samples": 0,
+      "lane_departure_samples": 14,
+      "map": "Town02_Opt"
+    },
+    {
+      "file": "expert-town02_opt-7-011-1789030643366201300.jsonl",
+      "samples": 1692,
+      "distance_m": 343.8,
+      "red_light_samples": 0,
+      "lane_departure_samples": 13,
+      "map": "Town02_Opt"
+    },
+    {
+      "file": "expert-town02_opt-7-012-1789030643366201300.jsonl",
+      "samples": 1284,
+      "distance_m": 269.3,
+      "red_light_samples": 562,
+      "lane_departure_samples": 0,
+      "map": "Town02_Opt"
+    },
+    {
+      "file": "expert-town02_opt-7-013-1789030643366201300.jsonl",
+      "samples": 1987,
+      "distance_m": 324.0,
+      "red_light_samples": 0,
+      "lane_departure_samples": 12,
+      "map": "Town02_Opt"
+    },
+    {
+      "file": "expert-town02_opt-7-014-1789030643366201300.jsonl",
+      "samples": 1364,
+      "distance_m": 321.2,
+      "red_light_samples": 0,
+      "lane_departure_samples": 0,
+      "map": "Town02_Opt"
+    }
+  ],
+  "total_samples": 19750,
+  "total_distance_m": 3955.1,
+  "scope": "BasicAgent demonstrations on one small map; no trained-model or unseen-map success claim."
+}

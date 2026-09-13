@@ -1,0 +1,5 @@
+{
+  "error": "front camera stopped producing images; recording preserved.",
+  "traceback": "Traceback (most recent call last):\n  File \"C:\\Users\\medha\\Desktop\\Autonomous driving agent\\neural_presentation.py\", line 459, in main\n    capture_view(args, output, metadata, rows, view)\n  File \"C:\\Users\\medha\\Desktop\\Autonomous driving agent\\neural_presentation.py\", line 358, in capture_view\n    render(rows[i])\n  File \"C:\\Users\\medha\\Desktop\\Autonomous driving agent\\neural_presentation.py\", line 349, in render\n    raise RuntimeError(f'{view} camera stopped producing images; recording preserved.')\nRuntimeError: front camera stopped producing images; recording preserved.\n",
+  "recording_preserved": true
+}

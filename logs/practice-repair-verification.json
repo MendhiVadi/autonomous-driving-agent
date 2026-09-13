@@ -1,0 +1,26 @@
+{
+  "report": "C:\\Users\\medha\\Desktop\\Autonomous driving agent\\logs\\neural-visual-validation-20260913-035458.json",
+  "log": "C:\\Users\\medha\\Desktop\\Autonomous driving agent\\logs\\practice-20260913-035028-cockpit.log",
+  "sample_count": 236,
+  "last_inference_sequence": 4476,
+  "maximum_activation_error": 0.0,
+  "destination_reached": true,
+  "red_light_resumptions": 7,
+  "max_lane_correction": 0.076126505439418,
+  "max_lane_error_m": 1.0981565240472264,
+  "max_speed_kmh": 27.71948623717282,
+  "safety_reasons": [
+    "red_light"
+  ],
+  "navigation_error": false,
+  "browser_connected": true,
+  "model_sha256": "b30633bd91950bb4c170e2198a7dbd7f66a4df57d6723a50563fec481f1a373a",
+  "tests_passed": 131,
+  "additional_destination_selections": [
+    "[route] destination selected: {\"x\": 41.9, \"y\": 237.2, \"target_speed_kmh\": 30.0, \"controller\": \"neural_policy\", \"policy\": \"C:\\\\Users\\\\medha\\\\Desktop\\\\Autonomous driving agent\\\\exports\\\\preliminary-network-20260910-150651\\\\nn_policy_preliminary.json\", \"route_waypoints\": 71, \"route_length_m\": 139.3}"
+  ],
+  "manual_input_records": 0,
+  "log_safety_reasons": [
+    "red_light"
+  ]
+}

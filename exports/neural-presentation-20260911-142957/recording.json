@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "map": "Town02_Opt",
+  "policy": "C:\\Users\\medha\\Desktop\\Autonomous driving agent\\exports\\preliminary-network-20260910-150651\\nn_policy_preliminary.json",
+  "policy_sha256": "b30633bd91950bb4c170e2198a7dbd7f66a4df57d6723a50563fec481f1a373a",
+  "controller": "neural policy with independent safety supervisor",
+  "stall_recovery": true,
+  "traffic_vehicles": 0,
+  "physics_hz": 20,
+  "capture_fps": 10,
+  "vehicle": "vehicle.ford.mustang",
+  "completed": false,
+  "transmission": "stock automatic, matching expert collection"
+}

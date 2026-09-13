@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CARLA · Neural activity</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#080f1b;color:#e4edf9;font:15px system-ui,sans-serif}main{max-width:1500px;margin:auto;padding:30px}header{display:flex;justify-content:space-between;align-items:center;gap:20px}h1{font-size:32px;font-weight:550;margin:8px 0}.eyebrow{color:#63ddd1;letter-spacing:3px;font-size:12px}p{color:#98a9c0;line-height:1.6}#status{border:1px solid #34435a;border-radius:30px;padding:12px 20px;color:#91a2ba}section{background:#0c1727;border:1px solid #22324a;border-radius:18px;margin-top:24px;padding:18px}canvas{display:block;width:100%;height:650px}footer{display:flex;justify-content:space-between;gap:20px;color:#99abc3;font-size:13px}.cards{display:flex;gap:14px}.card{flex:1;padding:18px;background:#132238;border-radius:12px}.card b{display:block;font-size:26px;margin-top:8px;font-variant-numeric:tabular-nums}#detail{min-height:24px;color:#b9cbe2}small{color:#98a9c0}@media(max-width:700px){main{padding:12px}h1{font-size:24px}header,footer{display:block}canvas{height:570px}}
+</style>
+<main><header><div><div class="eyebrow">CARLA / LIVE INFERENCE</div><h1>Inside the driving network</h1><small id="model">Connecting to the practice car…</small></div><div id="status">Waiting for the model</div></header>
+<p>Press <b>M</b> in the car window and choose a road destination to activate the network.</p>
+<section><b id="driving">Waiting for car telemetry</b><p id="applied">Applied controls will appear here.</p><small id="assistance"></small></section>
+<section><canvas id="network" aria-label="Live neural network activations"></canvas><div id="detail">Hover over a node to inspect its exact activation.</div></section>
+<section class="cards"><div class="card">Raw steering<b id="steer">—</b></div><div class="card">Raw accelerator<b id="throttle">—</b></div><div class="card">Raw brake<b id="brake">—</b></div></section>
+<p>These are the model’s raw predictions. Safety checks, start assistance and control limits determine the commands applied to the car.</p>
+<footer><span><span style="color:#51e2c2">● Positive</span> &nbsp; <span style="color:#ba9aff">● Negative</span> &nbsp; Brightness = activation magnitude</span><span id="counter">No decisions yet</span></footer>
+<p style="font-size:12px">All 51 nodes are evaluated on every decision, including nodes with zero activation. Links show learned connections; stronger signals glow brighter. The browser samples the latest real forward pass at up to 10 Hz. No simulated firing animation or training.</p></main>
+<script>
+const canvas=document.querySelector('canvas'),ctx=canvas.getContext('2d'),statusEl=document.querySelector('#status');
+const inputs=['Lane error','Heading error','Speed','Target speed','Obstacle distance','Red light','Curvature','Stopped'],outputs=['Steering','Accelerator','Brake'];
+let data=null,connected=false,nodes=[],lastSeen=0;
+function draw(){
+ const w=canvas.clientWidth,h=canvas.clientHeight,dpr=devicePixelRatio||1;canvas.width=w*dpr;canvas.height=h*dpr;ctx.scale(dpr,dpr);nodes=[];
+ if(!data)return;
+ const s=data.sample,age=s?data.now-s.time:Infinity,live=connected&&age<.75;
+ const runtime=data.runtime||{};
+ document.querySelector('#driving').textContent=connected?(runtime.status||'Waiting for car telemetry'):'Practice disconnected';
+ document.querySelector('#assistance').textContent=runtime.route_active&&runtime.lane_assist?`Lane assistance: steering correction ${(runtime.lane_correction||0).toFixed(3)} (bounded ±0.160) · speed target ${(runtime.speed_target_kmh||0).toFixed(1)} km/h. Raw neural outputs remain below.`:'';
+ document.querySelector('#applied').textContent=runtime.applied?`Applied to car: steering ${runtime.applied.steering.toFixed(3)} · accelerator ${runtime.applied.accelerator.toFixed(3)} · brake ${runtime.applied.brake.toFixed(3)}${runtime.route_active&&runtime.speed_kmh!==undefined?' · speed '+runtime.speed_kmh.toFixed(1)+' km/h':''}`:'Applied controls will appear here.';
+ statusEl.textContent=!connected?'Disconnected · practice has stopped':!s?'Ready · choose a destination':live?'● Live neural decisions':'Idle · no new inference';statusEl.style.color=live?'#51e2c2':'#99abc3';
+ document.querySelector('#model').textContent=data.model.name+' · '+data.model.sizes.join(' → ');
+ document.querySelector('#counter').textContent=s?'Decision '+s.sequence.toLocaleString()+' · '+(live?'receiving live activity':'last sample retained'):'No decisions yet';
+ const narrow=w<700,left=narrow?95:170,right=narrow?65:140;
+ const pts=data.model.sizes.map((n,l)=>Array.from({length:n},(_,i)=>({x:left+l*(w-left-right)/3,y:65+(i+.5)*(h-100)/n,v:s?s.layers[l][i]:0,l,i})));
+ ctx.font='12px system-ui';ctx.textAlign='center';ctx.fillStyle='#8fa4c0';['8 INPUTS','24 · TANH','16 · TANH','3 OUTPUTS'].forEach((v,l)=>ctx.fillText(v,pts[l][0].x,22));
+ for(let l=0;l<3;l++)for(const a of pts[l])for(const b of pts[l+1]){
+ const signal=a.v*data.model.weights[l][b.i][a.i],strength=Math.min(1,Math.abs(signal));
+ ctx.strokeStyle=live?(signal>=0?`rgba(55,216,186,${.025+strength*.3})`:`rgba(173,130,250,${.025+strength*.3})`):'rgba(88,111,149,.07)';ctx.lineWidth=.6+strength*.7;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();}
+ for(const layer of pts)for(const n of layer){const strength=Math.min(1,Math.abs(n.v)),color=n.v>=0?'#51e2c2':'#ba9aff';ctx.beginPath();ctx.arc(n.x,n.y,n.l===1?7:9,0,Math.PI*2);ctx.fillStyle=live?color:'#283b55';ctx.globalAlpha=live?.18+.82*strength:1;ctx.shadowBlur=live?strength*18:0;ctx.shadowColor=color;ctx.fill();ctx.globalAlpha=1;ctx.shadowBlur=0;ctx.strokeStyle=live?'#83a1b4':'#42536d';ctx.lineWidth=1;ctx.stroke();
+ ctx.fillStyle='#a8bad2';ctx.font=(narrow?'10':'12')+'px system-ui';if(n.l===0){ctx.textAlign='right';ctx.fillText(inputs[n.i],n.x-16,n.y+4);}if(n.l===3){ctx.textAlign='left';ctx.fillText(outputs[n.i],n.x+16,n.y+4);}nodes.push(n);}
+ ['steer','throttle','brake'].forEach((id,i)=>document.getElementById(id).textContent=s?s.layers[3][i].toFixed(4):'—');
+}
+async function poll(){try{const r=await fetch('/state',{cache:'no-store',signal:AbortSignal.timeout(1500)});if(!r.ok)throw Error();data=await r.json();connected=true;lastSeen=Date.now();}catch(e){connected=false;}draw();setTimeout(poll,100);}
+canvas.addEventListener('mousemove',e=>{const r=canvas.getBoundingClientRect(),n=nodes.find(n=>Math.hypot(n.x-e.clientX+r.left,n.y-e.clientY+r.top)<13);document.querySelector('#detail').textContent=n?`${n.l===0?inputs[n.i]:n.l===3?outputs[n.i]:'Hidden '+n.l+' / node '+(n.i+1)} · ${data.sample?'activation '+n.v.toFixed(8):'waiting for inference'}${n.l===0?' (normalized input)':''}`:'Hover over a node to inspect its exact activation.';});
+window.addEventListener('resize',draw);poll();
+</script></html>

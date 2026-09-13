@@ -1,0 +1,58 @@
+{
+  "folder": {
+    "id": "1rfJh_cCpZ022mGyui9VmEJTXYdUIpubo",
+    "name": "preliminary-network-20260910-150651",
+    "mimeType": "application/vnd.google-apps.folder",
+    "parents": [
+      "165CXB2CH0fIAcWdK1tAEoVCNaxd0xjWp"
+    ],
+    "webViewLink": "https://drive.google.com/drive/folders/1rfJh_cCpZ022mGyui9VmEJTXYdUIpubo"
+  },
+  "files": [
+    {
+      "id": "1CrZRkfvoUBnbbVm_PwTR8X4CqDJqbi1r",
+      "name": "trained_network.ipynb",
+      "mimeType": "application/vnd.google.colaboratory",
+      "parents": [
+        "1rfJh_cCpZ022mGyui9VmEJTXYdUIpubo"
+      ],
+      "webViewLink": "https://colab.research.google.com/drive/1CrZRkfvoUBnbbVm_PwTR8X4CqDJqbi1r",
+      "md5Checksum": "a0e2df13ebe6d03c41f94c870fbed683",
+      "size": "73128"
+    },
+    {
+      "id": "1yBRybyZawPWctmx7n2DbL-sve81iK3Qj",
+      "name": "nn_policy_preliminary.json",
+      "mimeType": "application/json",
+      "parents": [
+        "1rfJh_cCpZ022mGyui9VmEJTXYdUIpubo"
+      ],
+      "webViewLink": "https://drive.google.com/file/d/1yBRybyZawPWctmx7n2DbL-sve81iK3Qj/view?usp=drivesdk",
+      "md5Checksum": "c37082d5cf4c89d1baa9409f06d7b2e9",
+      "size": "22358"
+    },
+    {
+      "id": "1EcHwYo_wTNhezoDgEvrT8RkZ9ugOpWGt",
+      "name": "training_result.json",
+      "mimeType": "application/json",
+      "parents": [
+        "1rfJh_cCpZ022mGyui9VmEJTXYdUIpubo"
+      ],
+      "webViewLink": "https://drive.google.com/file/d/1EcHwYo_wTNhezoDgEvrT8RkZ9ugOpWGt/view?usp=drivesdk",
+      "md5Checksum": "02e7c0cd793b08fc136eab37e5d81329",
+      "size": "2976"
+    },
+    {
+      "id": "1NcjCu4BdK5vlQMOd0dRmPvrzzO7nPdkd",
+      "name": "learning_curve.png",
+      "mimeType": "image/png",
+      "parents": [
+        "1rfJh_cCpZ022mGyui9VmEJTXYdUIpubo"
+      ],
+      "webViewLink": "https://drive.google.com/file/d/1NcjCu4BdK5vlQMOd0dRmPvrzzO7nPdkd/view?usp=drivesdk",
+      "md5Checksum": "fa2daaf1f06d5aac8e1de5187d967751",
+      "size": "36149"
+    }
+  ],
+  "training_location": "local CPU"
+}

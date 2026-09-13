@@ -1,0 +1,59 @@
+
+===== 2026-09-09 17:03:12 starting carla =====
+
+===== 2026-09-09 17:08:32 starting carla =====
+
+===== 2026-09-09 17:11:00 starting carla =====
+
+===== 2026-09-09 17:11:42 starting carla =====
+
+===== 2026-09-09 23:00:57 starting carla =====
+
+===== 2026-09-10 00:05:42 starting carla =====
+
+===== 2026-09-10 00:10:26 starting carla =====
+INFO:  Listening at  0.0.0.0:2002 
+INFO:  session 3 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 2 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 7 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 0 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 13 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 17 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 11 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 23 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 12 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 24 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 8 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 22 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 15 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 28 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 27 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 32 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 16 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 38 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 41 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 39 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 44 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 46 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 45 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 34 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 33 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 47 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 52 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 54 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 53 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 58 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 60 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 59 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 64 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 70 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 71 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 69 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 74 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 75 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 77 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 83 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 82 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 88 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 100 : error sending data : An existing connection was forcibly closed by the remote host 
+INFO:  session 101 : error sending data : An existing connection was forcibly closed by the remote host 
