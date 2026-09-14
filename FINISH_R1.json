@@ -1,0 +1,17 @@
+{
+  "milestone": "Finish R1",
+  "verified": true,
+  "files": 92812,
+  "bytes": 49046659137,
+  "roots": {
+    "workspace": "C:\\Users\\medha\\Desktop\\Autonomous driving agent",
+    "CARLA": "C:\\Users\\medha\\Documents\\CARLA"
+  },
+  "completed": "2026-09-13T10:48:32",
+  "backup_directory": "C:\\Users\\medha\\Documents\\Autonomous Driving Backups\\Finish R1-20260913-095714",
+  "manifest_sha256": "2693e145813e159740b8a5971eecb149b62b071aebc35bcc136fcdefc588515b",
+  "git_tag": "Finish-R1",
+  "git_commit": "d952650",
+  "protected_files_checked": 100,
+  "protected_files_changed": []
+}

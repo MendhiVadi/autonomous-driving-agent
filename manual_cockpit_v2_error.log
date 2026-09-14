@@ -1,6 +1,0 @@
-usage: spawn_car.py [-h] [--host HOST] [--port PORT] [--map MAP]
-                    [--window-width WINDOW_WIDTH]
-                    [--window-height WINDOW_HEIGHT] [--agent-stdin]
-                    [--screenshot-path SCREENSHOT_PATH]
-                    [--camera-profile {safe,four}]
-spawn_car.py: error: unrecognized arguments: driving agent\cockpit_last_frame.png

@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+logs/
+episodes/
+exports/
+backups/
+colab_artifacts/
+artifacts/
+Claude outputs/
+.claude/
+.codex/
+run/*.url
+.env
+.env.*
+!.env.example
