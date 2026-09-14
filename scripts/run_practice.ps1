@@ -19,6 +19,7 @@ param(
 if (([double]::IsNaN($MaxRuntimeSeconds) -or [double]::IsInfinity($MaxRuntimeSeconds)) -or $MaxRuntimeSeconds -lt 0) { throw 'MaxRuntimeSeconds must be finite and non-negative.' }
 $ErrorActionPreference = 'Stop'
 $appRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'carla_startup_state.ps1')
 Set-Location -LiteralPath $appRoot
 $sessionMutex = [Threading.Mutex]::new($false, 'Local\AutonomousDrivingAgent.Runtime')
 $leaseAcquired = $false
@@ -88,7 +89,7 @@ foreach ($required in @($python, $server, $cockpit)) {
 }
 
 function Get-CarlaProcesses {
-    @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+    @(Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object {
         $_.Name -in @('CarlaUE4.exe', 'CarlaUE4-Win64-Shipping.exe')
     })
 }
@@ -159,10 +160,20 @@ if ($ownedServer) {
 Write-Host 'Waiting for the CARLA world to finish loading...'
 $deadline = (Get-Date).AddSeconds(180)
 $ready = $false
+$missingProcessChecks = 0
 while ((Get-Date) -lt $deadline) {
-    if (-not (Get-CarlaProcesses)) {
-        throw 'CARLA exited while the world was loading. Check the latest crash report.'
+    if (-not (Test-CarlaStartupAlive -OwnedProcess $ownedServerProcess -FindProcesses { Get-CarlaProcesses })) {
+        $missingProcessChecks++
+        if ($missingProcessChecks -lt 3) {
+            Start-Sleep -Seconds 1
+            continue
+        }
+        $detail = Get-CarlaStartupExitDetail -OwnedProcess $ownedServerProcess
+        $failurePath = Join-Path $logDir "$runName-startup-failure.txt"
+        $detail | Set-Content -LiteralPath $failurePath -Encoding UTF8
+        throw "CARLA stopped before the world became ready. $detail Details: $failurePath"
     }
+    $missingProcessChecks = 0
     if (Test-CarlaReady) {
         $ready = $true
         break

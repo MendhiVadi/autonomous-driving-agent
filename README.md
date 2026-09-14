@@ -56,6 +56,13 @@ An unresponsive unowned simulator is reported for manual closure, never killed
 automatically by a new launcher. Close practice with Esc; `stop_stack.cmd`
 addresses the separate supervised mode.
 
+Startup checks the owned simulator process directly and tolerates a brief
+handover to its worker process. If it exits before the world is ready, the
+launcher prints its native exit code and saves a dated `startup-failure.txt`
+report under `logs/`. A September 14 startup failure was not reproducible on
+retry; the strengthened checks passed 153 regressions and a 25-second live
+launch with the neural webpage and clean shutdown.
+
 The Colab notebook remains `colab_train_policy.ipynb`. Its generator is
 `tools/build_colab_notebook.py`. Dataset files and weights were preserved.
 The legacy `nn_policy.json` is retained for rollback and is not deployable.
