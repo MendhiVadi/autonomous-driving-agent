@@ -1,0 +1,6 @@
+{
+  "carla_root": "%USERPROFILE%/Documents/CARLA/CARLA_0.9.16",
+  "legacy_policy_candidates": [
+    "nn_policy_colab.json"
+  ]
+}
