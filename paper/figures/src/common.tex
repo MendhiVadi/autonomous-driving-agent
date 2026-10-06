@@ -1,0 +1,33 @@
+% Shared preamble for the standalone figure sources.
+\usepackage{times}
+\usepackage{amsmath,amssymb}
+\usepackage{xcolor}
+\usepackage{textcomp}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\usetikzlibrary{arrows.meta,positioning,calc,fit,backgrounds}
+\usepgfplotslibrary{fillbetween}
+\pgfplotsset{compat=1.16}
+
+% Colours are colour-blind safe (Okabe--Ito) and every figure also separates
+% its classes by line style or fill, so the figures stay readable in greyscale.
+\definecolor{cObs}{HTML}{0072B2}   % observed by the network
+\definecolor{cHid}{HTML}{D55E00}   % hidden / unexplained
+\definecolor{cHelp}{HTML}{009E73}  % safety helpers
+\definecolor{cInk}{HTML}{333333}
+
+\tikzset{
+  box/.style={draw=cInk!70, rounded corners=1.5pt, fill=white, align=center,
+              font=\scriptsize, inner sep=3pt, minimum height=0.8cm,
+              line width=0.5pt},
+  obs/.style={box, draw=cObs, fill=cObs!8},
+  hid/.style={box, draw=cHid, fill=cHid!10},
+  help/.style={box, draw=cHelp, fill=cHelp!10},
+  flow/.style={-{Stealth[length=4pt]}, line width=0.6pt, draw=cInk!80},
+  lbl/.style={font=\scriptsize, text=cInk!85, inner sep=1.5pt, align=center},
+}
+\pgfplotsset{
+  every axis/.append style={font=\scriptsize, tick label style={font=\scriptsize},
+                            label style={font=\scriptsize},
+                            title style={font=\scriptsize\bfseries}, line width=0.5pt},
+}

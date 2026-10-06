@@ -1,0 +1,46 @@
+% Standalone source for the paper figure; build with figures/build.sh
+\documentclass[border=1pt]{standalone}
+\input{common}
+\begin{document}
+\begin{tikzpicture}[x=1cm,y=1cm]
+% privileged simulator state
+\node[hid, text width=2.7cm, minimum height=3.1cm] (sim) at (-0.4,0)
+  {\textbf{Simulator state} $z_t$\\[2pt] traffic lights, destination,
+   junction, nearby actors\\[2pt]\itshape privileged};
+% top row: the expert
+\node[box, text width=2.7cm] (exp) at (4.6,1.55)
+  {\textbf{Expert}\\ CARLA \texttt{BasicAgent}};
+\node[box, text width=2.4cm] (act) at (8.8,1.55)
+  {\textbf{Expert action} $a_t$\\ steer, throttle, brake};
+% bottom row: the learner and what surrounds it
+\node[obs, text width=2.7cm] (obs) at (4.6,-1.55)
+  {\textbf{Network input} $o_t$\\ 8 derived values};
+\node[obs, text width=2.4cm] (net) at (8.8,-1.55)
+  {\textbf{Network} $f_\theta$\\ MLP 8--24--16--3};
+\node[help, text width=2.4cm] (hlp) at (12.3,-1.55)
+  {\textbf{Supervisor and helpers}\\ brake, lane, stall rules};
+\node[box, text width=1.5cm] (car) at (15.3,-1.55)
+  {\textbf{Vehicle}\\ in CARLA};
+% data flow
+\draw[flow] (sim.east |- exp) -- node[lbl,above] {full $z_t$} (exp.west);
+\draw[flow] (sim.east |- obs) -- node[lbl,above] {8 values}
+  node[lbl,below,text=cHid] {rest of $z_t$\\dropped} (obs.west);
+\draw[flow] (exp) -- (act);
+\draw[flow] (obs) -- (net);
+\draw[flow] (net) -- node[lbl,above] {$\hat a_t$} (hlp);
+\draw[flow] (hlp) -- node[lbl,above,xshift=1pt] {control} (car);
+% imitation loss
+\draw[{Stealth[length=4pt]}-{Stealth[length=4pt]}, dashed, line width=0.6pt,
+      draw=cObs] (act) -- node[lbl,right,text=cObs] {imitation loss} (net);
+% what is dropped
+% candidate inputs that repair the gap
+\node[hid, dashed, text width=3.6cm] (cand) at (4.6,-3.5)
+  {\textbf{Not provided:} distance to goal, light distance, junction flag};
+\draw[flow, draw=cHid, dashed] (cand) -- node[lbl,right,text=cHid] {repair step} (obs);
+% hidden cause call-out
+\node[hid, text width=5.4cm, minimum height=1.25cm] (callout) at (13.3,1.55)
+  {\textbf{Hidden cause.} The expert brakes for something in $z_t$ that no
+   entry of $o_t$ shows, so the network can only react once the car has
+   already started to slow.};
+\end{tikzpicture}
+\end{document}
