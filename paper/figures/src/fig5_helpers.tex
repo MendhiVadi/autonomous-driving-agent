@@ -1,0 +1,33 @@
+% Standalone source for the paper figure; build with figures/build.sh
+\documentclass[border=1pt]{standalone}
+\input{common}
+\begin{document}
+\begin{tikzpicture}[x=1cm,y=1cm]
+\tikzset{chip/.style={box, text width=1.5cm, minimum height=0.62cm},
+         off/.style={chip, draw=cInk!30, text=cInk!35, fill=none, dashed}}
+\node[anchor=east, font=\scriptsize\bfseries] at (1.35,1.0) {Raw};
+\node[anchor=east, font=\scriptsize\bfseries] at (1.35,0.0) {Supervised};
+\node[anchor=east, font=\scriptsize\bfseries] at (1.35,-1.0) {Full};
+% Raw
+\node[obs, chip] at (2.2,1.0) {network};
+\node[off] at (4.15,1.0) {supervisor};
+\node[off] at (6.1,1.0) {helper rules};
+% Supervised
+\node[obs, chip] at (2.2,0.0) {network};
+\node[help, chip] at (4.15,0.0) {supervisor};
+\node[off] at (6.1,0.0) {helper rules};
+% Full
+\node[obs, chip] at (2.2,-1.0) {network};
+\node[help, chip] at (4.15,-1.0) {supervisor};
+\node[help, chip] at (6.1,-1.0) {helper rules};
+% completion labels
+\node[anchor=west, font=\scriptsize] at (7.35,1.0) {$C_{\text{raw}}$};
+\node[anchor=west, font=\scriptsize] at (7.35,0.0) {$C_{\text{sup}}$};
+\node[anchor=west, font=\scriptsize] at (7.35,-1.0) {$C_{\text{full}}$};
+\draw[{Stealth[length=4pt]}-{Stealth[length=4pt]}, line width=0.6pt, draw=cHid]
+  (7.2,0.85) -- (7.2,-0.85);
+\node[align=center, font=\scriptsize, text=cHid] at (4.2,-1.85)
+  {HDI $=\dfrac{C_{\text{full}}-C_{\text{raw}}}{C_{\text{full}}}$:
+   the share of completion that the helpers add};
+\end{tikzpicture}
+\end{document}

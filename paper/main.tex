@@ -1,10 +1,12 @@
 % =====================================================================
 % Why Does My Driving Network Brake Late?
 %
-% Overleaf: upload or paste this single file and compile with pdfLaTeX
-% (the default).  Every figure is drawn with TikZ/pgfplots, so there are
-% no image files to upload.  Figures marked "schematic" in their caption
-% illustrate a definition; they are not recorded data.
+% Overleaf: upload the whole project (this file plus the figures/ folder)
+% and compile with pdfLaTeX (the default).  The six figures are the PDF
+% files in figures/ (PNG copies are alongside); their TikZ/pgfplots
+% sources are in figures/src, rebuilt with figures/build.sh.  Figures
+% marked "schematic" in their caption illustrate a definition; they are
+% not recorded data.
 % =====================================================================
 \documentclass[conference]{IEEEtran}
 \IEEEoverridecommandlockouts
@@ -16,11 +18,6 @@
 \usepackage{array}
 \usepackage{xcolor}
 \usepackage{textcomp}
-\usepackage{tikz}
-\usepackage{pgfplots}
-\usetikzlibrary{arrows.meta,positioning,calc,fit,backgrounds}
-\usepgfplotslibrary{fillbetween}
-\pgfplotsset{compat=1.16}
 \usepackage[hidelinks]{hyperref}
 \newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
 
@@ -29,32 +26,6 @@
 \tolerance=9999
 \emergencystretch=3em
 \sloppy
-
-% ---------------------------------------------------------------------
-% Figure style.  Colours are colour-blind safe (Okabe--Ito) and every
-% figure also separates its classes by line style or fill, so the
-% figures remain readable in a greyscale print.
-% ---------------------------------------------------------------------
-\definecolor{cObs}{HTML}{0072B2}   % observed by the network
-\definecolor{cHid}{HTML}{D55E00}   % hidden / unexplained
-\definecolor{cHelp}{HTML}{009E73}  % safety helpers
-\definecolor{cInk}{HTML}{333333}
-
-\tikzset{
-  box/.style={draw=cInk!70, rounded corners=1.5pt, fill=white, align=center,
-              font=\scriptsize, inner sep=3pt, minimum height=0.8cm,
-              line width=0.5pt},
-  obs/.style={box, draw=cObs, fill=cObs!8},
-  hid/.style={box, draw=cHid, fill=cHid!10},
-  help/.style={box, draw=cHelp, fill=cHelp!10},
-  flow/.style={-{Stealth[length=4pt]}, line width=0.6pt, draw=cInk!80},
-  lbl/.style={font=\scriptsize, text=cInk!85, inner sep=1.5pt, align=center},
-}
-\pgfplotsset{
-  every axis/.append style={font=\scriptsize, tick label style={font=\scriptsize},
-                            label style={font=\scriptsize},
-                            title style={font=\scriptsize\bfseries}, line width=0.5pt},
-}
 
 \begin{document}
 
@@ -151,47 +122,7 @@ define a Helper Dependence Index (Section~\ref{sec:shield}).
 % ---------------------------------------------------------------------
 \begin{figure*}[!t]
 \centering
-\begin{tikzpicture}[x=1cm,y=1cm]
-% privileged simulator state
-\node[hid, text width=2.7cm, minimum height=3.1cm] (sim) at (-0.4,0)
-  {\textbf{Simulator state} $z_t$\\[2pt] traffic lights, destination,
-   junction, nearby actors\\[2pt]\itshape privileged};
-% top row: the expert
-\node[box, text width=2.7cm] (exp) at (4.6,1.55)
-  {\textbf{Expert}\\ CARLA \texttt{BasicAgent}};
-\node[box, text width=2.4cm] (act) at (8.8,1.55)
-  {\textbf{Expert action} $a_t$\\ steer, throttle, brake};
-% bottom row: the learner and what surrounds it
-\node[obs, text width=2.7cm] (obs) at (4.6,-1.55)
-  {\textbf{Network input} $o_t$\\ 8 derived values};
-\node[obs, text width=2.4cm] (net) at (8.8,-1.55)
-  {\textbf{Network} $f_\theta$\\ MLP 8--24--16--3};
-\node[help, text width=2.4cm] (hlp) at (12.3,-1.55)
-  {\textbf{Supervisor and helpers}\\ brake, lane, stall rules};
-\node[box, text width=1.5cm] (car) at (15.3,-1.55)
-  {\textbf{Vehicle}\\ in CARLA};
-% data flow
-\draw[flow] (sim.east |- exp) -- node[lbl,above] {full $z_t$} (exp.west);
-\draw[flow] (sim.east |- obs) -- node[lbl,above] {8 values}
-  node[lbl,below,text=cHid] {rest of $z_t$\\dropped} (obs.west);
-\draw[flow] (exp) -- (act);
-\draw[flow] (obs) -- (net);
-\draw[flow] (net) -- node[lbl,above] {$\hat a_t$} (hlp);
-\draw[flow] (hlp) -- node[lbl,above,xshift=1pt] {control} (car);
-% imitation loss
-\draw[{Stealth[length=4pt]}-{Stealth[length=4pt]}, dashed, line width=0.6pt,
-      draw=cObs] (act) -- node[lbl,right,text=cObs] {imitation loss} (net);
-% what is dropped
-% candidate inputs that repair the gap
-\node[hid, dashed, text width=3.6cm] (cand) at (4.6,-3.5)
-  {\textbf{Not provided:} distance to goal, light distance, junction flag};
-\draw[flow, draw=cHid, dashed] (cand) -- node[lbl,right,text=cHid] {Section~\ref{sec:repair}} (obs);
-% hidden cause call-out
-\node[hid, text width=5.4cm, minimum height=1.25cm] (callout) at (13.3,1.55)
-  {\textbf{Hidden cause.} The expert brakes for something in $z_t$ that no
-   entry of $o_t$ shows, so the network can only react once the car has
-   already started to slow.};
-\end{tikzpicture}
+\includegraphics{figures/fig1_overview}
 \caption{System overview. The expert acts on the full simulator state
 $z_t$; the network sees only eight derived values $o_t$ and is trained to
 copy the expert's action. Anything in $z_t$ that never reaches $o_t$ is a
@@ -275,40 +206,7 @@ Fig.~\ref{fig:audit} shows one explained and one unexplained onset.
 
 \begin{figure*}[!t]
 \centering
-\begin{tikzpicture}
-\begin{axis}[name=A, width=7.4cm, height=5.6cm, xmin=-2.5, xmax=1.5,
-  ymin=-0.3, ymax=6.4, xlabel={time relative to brake onset (s)},
-  ytick={0.4,1.6,2.8,4.0,5.2},
-  yticklabels={brake $b_t$,red-light flag,obstacle dist.,speed,hidden $z_t$},
-  xtick={-2,-1,0,1}, title={(a) explained onset: an input warns}]
-  \fill[black!8] (axis cs:-1,-0.3) rectangle (axis cs:0,6.4);
-  \node[font=\scriptsize] at (axis cs:-0.5,6.05) {$W$};
-  \draw[dashed, cInk!70] (axis cs:0,-0.3) -- (axis cs:0,6.4);
-  \addplot[cInk, very thick] coordinates {(-2.5,0)(-0.01,0)(0,0.8)(1.5,0.8)};
-  \addplot[cObs, thick] coordinates {(-2.5,1.2)(-0.5,1.2)(-0.49,2.0)(1.5,2.0)};
-  \addplot[cObs, thick] coordinates {(-2.5,3.2)(1.5,3.2)};
-  \addplot[cObs, thick] coordinates {(-2.5,4.4)(0.15,4.4)(1.5,3.75)};
-  \addplot[cHid, thick, dashed] coordinates {(-2.5,5.6)(1.5,5.6)};
-  \node[font=\scriptsize, text=cObs, anchor=east] at (axis cs:-0.55,1.7) {warns};
-\end{axis}
-\begin{axis}[at={($(A.east)+(0.5cm,0)$)}, anchor=west, width=7.4cm, height=5.6cm,
-  xmin=-2.5, xmax=1.5, ymin=-0.3, ymax=6.4,
-  xlabel={time relative to brake onset (s)}, ytick=\empty, xtick={-2,-1,0,1},
-  title={(b) unexplained onset: no input warns}]
-  \fill[black!8] (axis cs:-1,-0.3) rectangle (axis cs:0,6.4);
-  \node[font=\scriptsize] at (axis cs:-0.5,6.05) {$W$};
-  \draw[dashed, cInk!70] (axis cs:0,-0.3) -- (axis cs:0,6.4);
-  \addplot[cInk, very thick] coordinates {(-2.5,0)(-0.01,0)(0,0.8)(1.5,0.8)};
-  \addplot[cObs, thick] coordinates {(-2.5,1.2)(1.5,1.2)};
-  \addplot[cObs, thick] coordinates {(-2.5,3.2)(1.5,3.2)};
-  \addplot[cObs, thick] coordinates {(-2.5,4.4)(0.15,4.4)(1.5,3.75)};
-  \addplot[cHid, thick, dashed] coordinates {(-2.5,4.8)(-0.71,4.8)(-0.7,5.6)(1.5,5.6)};
-  \addplot[only marks, mark=*, mark size=1.8pt, cHid] coordinates {(-0.7,5.2)};
-  \node[font=\scriptsize, text=cHid, anchor=east] at (axis cs:-0.8,5.2) {hidden change};
-  \node[font=\scriptsize, text=cInk, anchor=south west, align=left] at (axis cs:0.12,4.5)
-    {speed falls only\\after the onset};
-\end{axis}
-\end{tikzpicture}
+\includegraphics{figures/fig2_audit}
 \caption{Schematic of the audit on a single brake onset (not recorded
 data). Shaded: the window $W$ before the onset. In (a) the red-light flag
 toggles inside $W$, so an input warns of the onset. In (b) the only
@@ -398,62 +296,7 @@ car. Section~\ref{sec:repair} describes how we find out.
 
 \begin{figure*}[!t]
 \centering
-\begin{minipage}[t]{0.31\textwidth}
-\centering
-\begin{tikzpicture}[baseline=(current bounding box.north)]
-\begin{axis}[ybar, width=\linewidth, height=4.5cm, bar width=15pt,
-  symbolic x coords={Train,Val,Test}, xtick=data,
-  xticklabels={Train (8),Val (2),Test (2)},
-  ymin=0, ymax=16500, enlarge x limits=0.28,
-  xlabel={split (whole routes)},
-  ylabel={samples}, ytick={0,5000,10000,15000},
-  yticklabels={0,5k,10k,15k}, scaled y ticks=false,
-  title={(a) samples per split},
-  nodes near coords, nodes near coords align={vertical},
-  every node near coord/.append style={font=\scriptsize,
-    /pgf/number format/fixed, /pgf/number format/precision=0,
-    /pgf/number format/1000 sep={{,}}}]
-  \addplot[fill=cObs!70, draw=cObs] coordinates {(Train,13052)(Val,2973)(Test,3725)};
-\end{axis}
-\end{tikzpicture}
-\end{minipage}\hfill
-\begin{minipage}[t]{0.31\textwidth}
-\centering
-\begin{tikzpicture}[baseline=(current bounding box.north)]
-\begin{axis}[xbar, width=0.78\linewidth, height=4.5cm, bar width=10pt,
-  symbolic y coords={Brake,Accelerator,Steering}, ytick=data,
-  xmin=0, xmax=1, enlarge y limits=0.3,
-  xlabel={mean absolute error (scale 0--1)},
-  xtick={0,0.5,1},
-  title={(b) held out error is small},
-  nodes near coords, nodes near coords align={horizontal},
-  every node near coord/.append style={font=\scriptsize,
-    /pgf/number format/fixed, /pgf/number format/precision=4}]
-  \addplot[fill=cObs!70, draw=cObs] coordinates {(0.0664,Brake)(0.0806,Accelerator)(0.0147,Steering)};
-\end{axis}
-\end{tikzpicture}
-\end{minipage}\hfill
-\begin{minipage}[t]{0.31\textwidth}
-\centering
-\begin{tikzpicture}[x=0.5cm,y=0.5cm,baseline=(current bounding box.north)]
-\useasboundingbox (-1.3,-8.7) rectangle (9.3,2.0);
-\node[font=\scriptsize\bfseries] at (4,1.6) {(c) 40 brake onsets, $W=1$\,s};
-\foreach \i in {0,...,39}{
-  \pgfmathtruncatemacro{\r}{int(\i/8)}
-  \pgfmathtruncatemacro{\c}{mod(\i,8)}
-  \ifnum\i<35
-    \fill[cHid] (\c,-\r) rectangle ++(0.82,-0.82);
-  \else
-    \draw[cObs, fill=white, line width=1pt] (\c+0.04,-\r-0.04) rectangle ++(0.74,-0.74);
-  \fi
-}
-\fill[cHid] (0,-5.5) rectangle ++(0.7,-0.7);
-\node[font=\scriptsize, anchor=west] at (1.1,-5.85) {35 unexplained: no input warns};
-\draw[cObs, fill=white, line width=1pt] (0.04,-6.74) rectangle ++(0.62,-0.62);
-\node[font=\scriptsize, anchor=west] at (1.1,-7.05) {5 warned by the red-light flag};
-\node[font=\scriptsize\bfseries, text=cHid] at (4,-8.1) {UER = 35/40 = 87.5\%};
-\end{tikzpicture}
-\end{minipage}
+\includegraphics[width=\textwidth]{figures/fig3_dataset}
 \caption{Measured on the 12-route dataset. (a) Samples in each split,
 with the number of whole routes in brackets. (b) Mean absolute error on
 the two test routes; every output is close to zero on a 0--1 scale. (c) The 40 brake
@@ -495,33 +338,7 @@ Fig.~\ref{fig:protocol} summarises the protocol.
 
 \begin{figure*}[!t]
 \centering
-\begin{tikzpicture}[x=1cm,y=1cm]
-\tikzset{pbox/.style={text width=3.0cm, minimum height=2.0cm, align=left,
-                      inner sep=4pt},
-         num/.style={circle, fill=cInk, text=white, font=\scriptsize\bfseries,
-                     inner sep=1.5pt, minimum size=0.45cm}}
-\node[box, pbox] (s1) at (0,0)
-  {\textbf{Log $z_t$.}\\ Re-record the 12 routes with traffic light, goal
-   distance, junction, road option and actor state at every step.};
-\node[box, pbox] (s2) at (3.6,0)
-  {\textbf{Label onsets.}\\ For each of the 40 onsets, name the privileged
-   variable that changed first.};
-\node[hid, pbox] (s3) at (7.2,0)
-  {\textbf{Hypotheses.}\\ H1 route end, H2 light range, H3 junction or road
-   option, H4 other or mixed.};
-\node[obs, pbox] (s4) at (10.8,0)
-  {\textbf{Repair and controls.}\\ Add the matching feature; also add a
-   random input and a correlated non-cause.};
-\node[obs, pbox] (s5) at (14.4,0)
-  {\textbf{Retrain, compare.}\\ Same seed and splits: UER, lead time,
-   braking delay, HDI.};
-\foreach \a/\b in {s1/s2,s2/s3,s3/s4,s4/s5}
-  \draw[flow] (\a.east) -- (\b.west);
-\foreach \s/\n in {s1/1,s2/2,s3/3,s4/4,s5/5}
-  \node[num] at ($(\s.north west)+(0.05,0.05)$) {\n};
-\draw[flow, dashed, draw=cHid] (s5.south) -- ++(0,-0.7) -|
-  node[lbl, pos=0.25, above, text=cHid] {UER does not fall: revise the hypotheses} (s3.south);
-\end{tikzpicture}
+\includegraphics{figures/fig4_protocol}
 \caption{Cause attribution and repair protocol. Controls (step 4) check
 that UER does not fall merely because an input was added; the feedback
 arrow marks the case where the first hypothesis is wrong.}
@@ -610,34 +427,7 @@ it in the override rate keeps this effect visible.
 
 \begin{figure}[!t]
 \centering
-\begin{tikzpicture}[x=1cm,y=1cm]
-\tikzset{chip/.style={box, text width=1.5cm, minimum height=0.62cm},
-         off/.style={chip, draw=cInk!30, text=cInk!35, fill=none, dashed}}
-\node[anchor=east, font=\scriptsize\bfseries] at (1.35,1.0) {Raw};
-\node[anchor=east, font=\scriptsize\bfseries] at (1.35,0.0) {Supervised};
-\node[anchor=east, font=\scriptsize\bfseries] at (1.35,-1.0) {Full};
-% Raw
-\node[obs, chip] at (2.2,1.0) {network};
-\node[off] at (4.15,1.0) {supervisor};
-\node[off] at (6.1,1.0) {helper rules};
-% Supervised
-\node[obs, chip] at (2.2,0.0) {network};
-\node[help, chip] at (4.15,0.0) {supervisor};
-\node[off] at (6.1,0.0) {helper rules};
-% Full
-\node[obs, chip] at (2.2,-1.0) {network};
-\node[help, chip] at (4.15,-1.0) {supervisor};
-\node[help, chip] at (6.1,-1.0) {helper rules};
-% completion labels
-\node[anchor=west, font=\scriptsize] at (7.35,1.0) {$C_{\text{raw}}$};
-\node[anchor=west, font=\scriptsize] at (7.35,0.0) {$C_{\text{sup}}$};
-\node[anchor=west, font=\scriptsize] at (7.35,-1.0) {$C_{\text{full}}$};
-\draw[{Stealth[length=4pt]}-{Stealth[length=4pt]}, line width=0.6pt, draw=cHid]
-  (7.2,0.85) -- (7.2,-0.85);
-\node[align=center, font=\scriptsize, text=cHid] at (4.2,-1.85)
-  {HDI $=\dfrac{C_{\text{full}}-C_{\text{raw}}}{C_{\text{full}}}$:
-   the share of completion that the helpers add};
-\end{tikzpicture}
+\includegraphics{figures/fig5_helpers}
 \caption{The three evaluation configurations. Solid boxes are active,
 dashed grey boxes are switched off. For each configuration we measure
 route completion, override rate, and collisions and lane departures per
@@ -689,31 +479,7 @@ Conclusions apply to CARLA and a rule-based expert.
 
 \begin{figure}[!t]
 \centering
-\begin{tikzpicture}
-\begin{axis}[width=\columnwidth, height=5.0cm, xmin=10, xmax=300,
-  ymin=0.6, ymax=1.0, xlabel={number of brake onsets $n$},
-  ylabel={95\% Wilson interval for UER},
-  ytick={0.6,0.7,0.8,0.9,1.0}, yticklabels={60\%,70\%,80\%,90\%,100\%},
-  xtick={10,40,100,170,300}, grid=major, grid style={cInk!12}]
-  \addplot[name path=lo, draw=none, domain=10:300, samples=80]
-    {(0.875+1.9208/x-1.96*sqrt(0.109375/x+0.9604/(x*x)))/(1+3.8416/x)};
-  \addplot[name path=hi, draw=none, domain=10:300, samples=80]
-    {(0.875+1.9208/x+1.96*sqrt(0.109375/x+0.9604/(x*x)))/(1+3.8416/x)};
-  \addplot[cObs!25] fill between[of=lo and hi];
-  \addplot[cObs, thick, domain=10:300, samples=80]
-    {(0.875+1.9208/x-1.96*sqrt(0.109375/x+0.9604/(x*x)))/(1+3.8416/x)};
-  \addplot[cObs, thick, domain=10:300, samples=80]
-    {(0.875+1.9208/x+1.96*sqrt(0.109375/x+0.9604/(x*x)))/(1+3.8416/x)};
-  \addplot[cInk, dashed, domain=10:300] {0.875};
-  \addplot[only marks, mark=*, mark size=2pt, cHid] coordinates {(40,0.739)(40,0.945)};
-  \addplot[only marks, mark=square*, mark size=2pt, cHelp] coordinates {(170,0.817)(170,0.917)};
-  \node[font=\scriptsize, text=cHid, anchor=north west, align=left] at (axis cs:48,0.745)
-    {$n=40$ (now): 73.9--94.5\%};
-  \node[font=\scriptsize, text=cHelp, anchor=north west, align=left] at (axis cs:178,0.825)
-    {$n\approx170$:\\81.7--91.7\%};
-  \node[font=\scriptsize, anchor=north east] at (axis cs:298,0.871) {observed UER 87.5\%};
-\end{axis}
-\end{tikzpicture}
+\includegraphics[width=\columnwidth]{figures/fig6_uncertainty}
 \caption{How the uncertainty in UER shrinks with the number of onsets,
 assuming the observed rate of 87.5\% stays the same (a planning
 calculation, not new data). The interval at $n=40$ is the one
