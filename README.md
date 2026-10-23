@@ -1,80 +1,85 @@
 # Autonomous driving agent
 
-## Start here
+Three independent application folders:
 
-Run **`run_practice.cmd`** for the current lightweight driving system.
-It starts CARLA on Town02_Opt without RGB cameras, opens the map cockpit,
-loads the saved preliminary network and opens its live activity page.
-Press **M**, choose a road destination, and use a driving key to take over.
-Press **Esc** to close the destination map, then the cockpit.
-Manual gears **M1–M6** and the existing cockpit layout remain supported.
+| Folder | Responsibility | Current status |
+| --- | --- | --- |
+| [laptop 1](laptop%201/README.md) | CARLA, graphics, physics, vehicle ownership and final safety | Full-graphics manual host and authenticated TLS reset/step gateway |
+| [laptop 2](laptop%202/README.md) | Reinforcement learning from scratch, inference and navigation decisions | Portable paired client and no-training diagnostics; trainer pending |
+| [legacy run](legacy%20run/README.md) | Complete current one-laptop system | Existing manual and assisted-neural modes, datasets, weights and tests |
 
-This is assisted state-input imitation learning. The network uses eight
-road/vehicle values; bounded lane/start assistance and an independent safety
-supervisor follow inference. It is not a camera model or validated road autonomy.
-The Intel Arc 3D-rendering fault remains unresolved; map mode is the default.
+## Run
 
-## Project layout
+For the existing neural system, open `legacy run` and run `run_neural.cmd`.
+Its full-graphics manual mode is `run_car.cmd`.
+For the same existing model with rendered scenery and its local activity page,
+use `legacy run/run_graphics_neural.cmd`: a three-camera (front, left, right) Epic cockpit
+rendered offscreen with DX12 (DX11 hangs CARLA on RGB cameras on this PC). Its Town02_Opt
+manual and neural-route checks passed in bounded runs on 2026-10-06; real keyboard
+focus by hand is still to be confirmed.
 
-| Folder | Purpose |
-| --- | --- |
-| `app/` | Driving, cockpit, controls, safety, process supervision and local web panel |
-| `tests/` | Automated regression tests; no running simulator required |
-| `tools/` | Dataset packaging, notebook generation, training and bounded live checks |
-| `scripts/` | PowerShell launch, stop, installation and device setup |
-| `run/` | Secondary launchers; `_practice.cmd` remains available |
-| `requirements/` | Dependency snapshots for each workflow |
-| `docs/` | Architecture, crash evidence and historical documentation |
-| `docs/images/` | Network diagrams |
-| `artifacts/screenshots/` | Previous cockpit screenshots |
-| `episodes/`, `exports/` | Demonstrations, trained artifacts and reports |
-| `logs/` | Runtime evidence; older root logs are in `logs/archive/` |
-| `backups/`, `Claude outputs/`, `colab_artifacts/` | Preserved earlier work; not runtime source |
+For the new simulation host's independent graphics/manual check, open
+`laptop 1` and run `run_manual.cmd`. Use
+`run_manual.cmd -Check` to validate paths/imports without starting CARLA.
 
-All custom Python driving code now lives in **`app/`**. The four custom
-Python files in the CARLA installation forward to that source for compatibility.
-Do not edit those adapters. CARLA binaries remain in
-`C:\Users\medha\Documents\CARLA\CARLA_0.9.16`.
-Set `CARLA_ROOT` for a different installation; pass `-CarlaRoot` when invoking
-`scripts/run_practice.ps1` directly. Commands resolve files from the project.
+Run `python -I -B check_local_link.py` for a two-process localhost rehearsal.
+It uses toy physics and fixed controls: no CARLA launch, model, or training.
+Use `legacy run/run_large_map_neural.cmd` for Town13 with the existing model,
+full graphics and the neural activity website. Use `laptop 1/run_large_map.cmd`
+for the separate manual map-only mode. In three bounded 2026-10-06 trials the neural
+launcher loaded Town13 in about two minutes, ran its three cameras for 120-150 s
+(cockpit 9-13 FPS) and shut down cleanly; the network drove a straight 120 m route to
+its destination but stopped at the first sharp corner of a 200 m route (twice), so
+Town13 neural driving stays experimental. Use the default
+Town02_Opt for the first two-PC connection;
+see the [map status](laptop%201/docs/MAPS.md) for the exact boundary.
 
-## Commands
+The RL policy/trainer is not implemented. Encrypted LAN software is prepared;
+physical two-PC routing/firewall/latency checks remain pending. The completed RL
+system must drive with full scenery, Epic-quality graphics, shadows and
+wind-blown foliage on the laptop 1. The existing trained imitation
+policy is preserved inside legacy and will not initialize RL training.
 
-| Command | Behavior |
-| --- | --- |
-| `run_practice.cmd` | Everyday map cockpit and neural activity page |
-| `run_training.cmd` | Collect expert demonstrations; does not train weights |
-| `run\run_human_demo.cmd` | Record manual demonstrations |
-| `verify.cmd` | Run offline regression checks |
-| `run\check_input_environment.cmd` | Bounded live simulator/input check |
-| `run\launch_carla_ui.cmd` | Separate headless supervised mode; requires `nn_policy_colab.json` |
-| `stop_stack.cmd` | Request cleanup from this project's headless supervisor |
+## Independence
 
-Other launchers are in `run/`; device/network setup scripts are in `scripts/`. Camera
-and presentation modes are experimental. Close one session before opening another.
-An unresponsive unowned simulator is reported for manual closure, never killed
-automatically by a new launcher. Close practice with Esc; `stop_stack.cmd`
-addresses the separate supervised mode.
+Each application owns its source, configuration, models and output paths.
+Required helpers were copied as ordinary independent files. There are no
+symlinks, shared source folders, sibling imports or fallback searches across
+these three applications. The two new applications now exchange versioned
+network messages locally or over a paired encrypted private-IP connection.
+Non-loopback operation requires TLS and an explicit allowed peer. No firewall
+rules or adapter settings are changed automatically.
 
-Startup checks the owned simulator process directly and tolerates a brief
-handover to its worker process. If it exits before the world is ready, the
-launcher prints its native exit code and saves a dated `startup-failure.txt`
-report under `logs/`. A September 14 startup failure was not reproducible on
-retry; the strengthened checks passed 153 regressions and a 25-second live
-launch with the neural webpage and clean shutdown.
+CARLA's third-party installation and Python environment stay outside the
+repository for legacy. The primary host now also has an isolated Python 3.12
+environment using the official API wheel bundled with CARLA 0.9.16. Neither
+application's code is loaded from the other. One CARLA
+session runs at a time, enforced by the existing Windows session mutex.
 
-The Colab notebook remains `colab_train_policy.ipynb`. Its generator is
-`tools/build_colab_notebook.py`. Dataset files and weights were preserved.
-The legacy `nn_policy.json` is retained for rollback and is not deployable.
+## Project knowledge in Obsidian
 
-## Finish R1 checkpoint
+Open `vault` as a folder vault in Obsidian and start with
+[the knowledge index](vault/00-Index.md). AI agents read this index and maintain
+the relevant notes alongside meaningful changes. Laptop 2 has a portable vault
+snapshot included in its client package. The Ethernet transfer share also holds
+`obsidian-vault.zip` for a standalone copy. These are explicit snapshots, not
+automatic two-way synchronization. Preserve local notes when exchanging updates.
 
-`FINISH_R1.json` records the full backup scope and verification count.
-The SHA-256 manifest, copied workspace, complete CARLA folder, and milestone
-record are in the backup folder listed in [docs/REORGANIZATION.md](docs/REORGANIZATION.md).
-Git tag **`Finish-R1`** marks the original project state. That tag is a source
-checkpoint; use the full backup to restore the original CARLA-side custom files too.
+## Maintenance checks
 
-See [docs/REORGANIZATION.md](docs/REORGANIZATION.md) for fixes and validation.
-The previous README is preserved as [historical notes](docs/archive/README-Finish-R1.md);
-its old paths, startup advice and dated results are not current instructions.
+Run `python -B verify_layout.py` with Python 3.11+ to check source isolation,
+local documentation links, and Python syntax without launching a simulator.
+Run `verify.cmd` inside `legacy run` for the retained system's regressions.
+Each new folder also contains its own test runner or environment check.
+The root link checker is maintenance orchestration only; neither application
+depends on it when deployed separately.
+
+See the [connection-day checklist](laptop%201/docs/CONNECT_SECOND_PC.md).
+`python -I -B check_local_link.py --tls` tests the paired encrypted connection
+without CARLA or training. The latest ZIP in `handoff` is for transfer to the
+other PC; it contains a private client token and must not be uploaded publicly.
+
+The previously approved four files remain deleted. This reorganization moved
+the remaining one-laptop files without discarding them. Historical backups
+and generated evidence are retained inside `legacy run`; do not treat them
+as active source. See [maintenance notes](legacy%20run/docs/MAINTENANCE.md).
