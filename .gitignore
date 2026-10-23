@@ -9,7 +9,17 @@ artifacts/
 Claude outputs/
 .claude/
 .codex/
-run/*.url
+**/run/*.url
+checkpoints/
+runs/
+.venv/
 .env
 .env.*
 !.env.example
+credentials/
+handoff/
+cache/
+transfer/
+transfer-setup.log
+transfer-diagnostics.log
+**/.obsidian/workspace*.json
