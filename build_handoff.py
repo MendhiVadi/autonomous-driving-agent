@@ -10,8 +10,8 @@ import subprocess
 import zipfile
 
 ROOT = Path(__file__).resolve().parent
-CLIENT = ROOT / "secondary laptop"
-HOST = ROOT / "primary laptop"
+CLIENT = ROOT / "laptop 2"
+HOST = ROOT / "laptop 1"
 PUBLIC_PAIRING = ("server-cert.pem", "token.txt", "pairing.json")
 
 
@@ -70,8 +70,8 @@ def main():
             name = path.relative_to(CLIENT).as_posix()
             data = path.read_bytes()
             manifest[name] = hashlib.sha256(data).hexdigest()
-            bundle.writestr("secondary laptop/" + name, data)
-        bundle.writestr("secondary laptop/MANIFEST.json", json.dumps(manifest, indent=2))
+            bundle.writestr("laptop 2/" + name, data)
+        bundle.writestr("laptop 2/MANIFEST.json", json.dumps(manifest, indent=2))
     with zipfile.ZipFile(archive) as bundle:
         if bundle.testzip() is not None or any("server-key" in name for name in bundle.namelist()):
             raise RuntimeError("Bundle verification failed")

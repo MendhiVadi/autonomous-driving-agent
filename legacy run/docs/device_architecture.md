@@ -16,4 +16,5 @@ model does not train during a drive; manual input cancels neural navigation.
 The activity page in `app/telemetry/` displays actual forward-pass values.
 
 All imports, model selection and outputs stay within this application.
-Remote control is handled by the separate host and client applications.
+The earlier direct remote-client launcher was removed with approval. This
+retained application is not the remote inference client for the new system.

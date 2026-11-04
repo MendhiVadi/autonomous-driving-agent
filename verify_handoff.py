@@ -23,7 +23,7 @@ def main():
                 if entry.file_size > 5_000_000:
                     raise RuntimeError("Unexpected large dependency/model in client bundle")
             bundle.extractall(directory)
-        client = directory / "secondary laptop"
+        client = directory / "laptop 2"
         for script in ("verify_bundle.py", "check_environment.py", "tests/run_tests.py"):
             subprocess.run([sys.executable, "-I", "-B", str(client / script)], cwd=client,
                            check=True, timeout=30)

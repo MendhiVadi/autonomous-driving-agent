@@ -9,8 +9,8 @@ from urllib.parse import unquote
 ROOT = Path(__file__).resolve().parent
 PROJECTS = {
     "legacy run": ("app", "tools", "tests", "scripts", "run", "config"),
-    "primary laptop": ("src", "tests", "scripts", "config", "tools"),
-    "secondary laptop": ("src", "tests", "scripts", "config"),
+    "laptop 1": ("src", "tests", "scripts", "config", "tools"),
+    "laptop 2": ("src", "tests", "scripts", "config"),
 }
 SKIP = {"__pycache__", ".venv", ".git", "logs", "backups", "exports", "episodes",
         "artifacts", "colab_artifacts", "Claude outputs", "checkpoints", "runs", "credentials", "handoff", "cache"}
@@ -44,7 +44,7 @@ def audit():
         local_names = {p.stem for base in local_roots if base.is_dir()
                        for p in base.iterdir() if p.is_dir() or p.suffix == ".py"}
         forbidden = ({"sim_host", "rl_client"} if name == "legacy run" else
-                     LEGACY_MODULES | ({"rl_client"} if name == "primary laptop" else {"sim_host"}))
+                     LEGACY_MODULES | ({"rl_client"} if name == "laptop 1" else {"sim_host"}))
         for path in active_files(project):
             relative = path.relative_to(project)
             if path.is_symlink() or path.stat().st_nlink > 1 or not path.resolve().is_relative_to(project.resolve()):

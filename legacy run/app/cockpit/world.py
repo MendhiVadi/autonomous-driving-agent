@@ -1,5 +1,6 @@
 """Small vehicle queries and spawn selection shared by the cockpit."""
 import math
+import time
 
 def vehicle_speed_kmh(vehicle):
     velocity = vehicle.get_velocity()
@@ -37,3 +38,18 @@ def try_spawn_vehicle(world, blueprint, spawn_points):
         if vehicle is not None:
             return vehicle
     return None
+
+
+def wait_until_settled(speed_kmh, advance, max_seconds=4.0, threshold_kmh=1.0, clock=time.monotonic):
+    """Advance the world until a freshly spawned car has stopped bouncing.
+
+    A just-spawned vehicle drops onto the road at several km/h; anything that
+    needs a stationary car (route-start alignment) must wait for that to pass.
+    Returns True when settled, False if still moving after ``max_seconds``.
+    """
+    deadline = clock() + max_seconds
+    while speed_kmh() >= threshold_kmh:
+        if clock() >= deadline:
+            return False
+        advance()
+    return True

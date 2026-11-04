@@ -1,11 +1,44 @@
 """Read-only, loopback visualization of the actual policy forward pass."""
 import json
+import math
 import os
 import threading
 import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+WAIT_KINDS = ("start", "realign", "exhausted")
+WAIT_LABEL_LIMIT = 40
+
+
+def _finite_seconds(value):
+    # bool is an int subclass; True must not become a 1 s wait.
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    value = float(value)
+    return value if math.isfinite(value) else None
+
+
+def sanitize_wait(wait):
+    """Return a JSON-safe copy of a runtime ``wait`` report, or ``None``.
+
+    Unknown kinds and non-dict values clear the wait. A countdown needs a
+    positive finite ``total_s`` and a finite ``elapsed_s``; without both the
+    kind and label are kept and the page shows the label alone.
+    """
+    if not isinstance(wait, dict) or wait.get("kind") not in WAIT_KINDS:
+        return None
+    label = wait.get("label")
+    label = " ".join(label.split())[:WAIT_LABEL_LIMIT] if isinstance(label, str) else ""
+    clean = {"kind": wait["kind"], "label": label}
+    total = _finite_seconds(wait.get("total_s"))
+    elapsed = _finite_seconds(wait.get("elapsed_s"))
+    if total is not None and elapsed is not None and round(total, 3) > 0:
+        total = round(total, 3)
+        clean["total_s"] = total
+        clean["elapsed_s"] = round(min(max(elapsed, 0.0), total), 3)
+    return clean
 
 
 class NeuralVisualizer:
@@ -95,6 +128,9 @@ class NeuralVisualizer:
         threading.Thread(target=launch, daemon=True).start()
 
     def publish_runtime(self, values):
+        if "wait" in values:
+            # A bad report clears the wait instead of leaving a stale countdown.
+            values = {**values, "wait": sanitize_wait(values["wait"])}
         with self.lock:
             self.runtime.update(values)
 
