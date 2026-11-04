@@ -134,7 +134,7 @@ class InputEnvironmentTests(unittest.TestCase):
     def test_neural_missing_policy_never_connects_to_simulator(self):
         with tempfile.TemporaryDirectory() as directory, patch('carla.Client') as client:
             args = SimpleNamespace(bootstrap_train=False,
-                carla_root=r'C:\CARLA\CARLA_0.9.16',
+                carla_root=r'C:\Users\medha\Documents\CARLA\CARLA_0.9.16',
                 policy=str(Path(directory) / 'missing.json'))
             with self.assertRaises(FileNotFoundError):
                 run_neural(args)
@@ -149,7 +149,7 @@ class InputEnvironmentTests(unittest.TestCase):
             policy = Path(directory) / 'test-placeholder.json'
             policy.write_text('{}', encoding="utf-8")
             args = SimpleNamespace(bootstrap_train=False,
-                carla_root=r'C:\CARLA\CARLA_0.9.16',
+                carla_root=r'C:\Users\medha\Documents\CARLA\CARLA_0.9.16',
                 policy=str(policy), host='127.0.0.1', port=2000, map=None)
             with patch('carla.Client'), \
                     patch('neural_drive_agent.load_deployable_policy'), \

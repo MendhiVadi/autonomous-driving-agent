@@ -1,15 +1,20 @@
 param(
     [string]$CarlaRoot = '',
     [ValidateSet('dx11', 'dx12', 'vulkan')][string]$RenderApi = 'dx11',
-    [ValidateSet('map', 'parking', 'safe')][string]$CameraProfile = 'map',
+    [ValidateSet('map', 'parking', 'triple', 'safe')][string]$CameraProfile = 'map',
     [double]$MaxRuntimeSeconds = 0,
     [string]$Map = 'Town02_Opt',
     [string]$RoutePolicy = '',
     [switch]$NoNeuralVisual,
     [switch]$NoLaneAssist,
     [string]$RouteDestination = '',
+    [string]$ScriptedKeys = '',
+    [double]$DiagnosticYawOffset = 0,
+    [double]$RouteAheadMeters = 0,
+    [string]$DiagnosticDisplace = '',
     [int]$SpawnIndex = -1,
     [switch]$LowScenery,
+    [switch]$FullGraphics,
     [switch]$RequireFreshServer,
     [switch]$OpenMap,
     [ValidateSet('practice', 'scenic', 'presentation', 'training', 'expert')][string]$Mode = 'practice',
@@ -34,12 +39,19 @@ try {
 $python = Join-Path $CarlaRoot 'carla_env\Scripts\python.exe'
 $server = Join-Path $CarlaRoot 'CarlaUE4.exe'
 $cockpit = Join-Path $appRoot 'app\spawn_car.py'
+$largeMapGraphics = $FullGraphics -and $Map -in @('Town11', 'Town12', 'Town13')
+$threeCameraGraphics = $FullGraphics -and $CameraProfile -eq 'triple'
+$displayWidth = if ($largeMapGraphics -or $threeCameraGraphics) { 960 } else { 1280 }
+$displayHeight = if ($largeMapGraphics -or $threeCameraGraphics) { 540 } else { 720 }
+$displayFps = if ($largeMapGraphics -or $threeCameraGraphics) { 15 } else { 20 }
 $env:CARLA_ROOT = $CarlaRoot
 $logDir = Join-Path $appRoot 'logs'
 New-Item -ItemType Directory -Path $logDir -Force | Out-Null
 $runName = $Mode + '-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
 $routeArguments = @()
 if ($Mode -eq 'scenic' -and $LowScenery) { throw 'Scenic driving uses full scenery. Use run_neural.cmd for the lightweight mode.' }
+if ($FullGraphics -and $LowScenery) { throw 'FullGraphics and LowScenery cannot be combined.' }
+if ($FullGraphics -and $Mode -ne 'practice') { throw 'FullGraphics supports the neural practice mode only.' }
 if ($Mode -eq 'practice') {
     # This launcher uses the explicit cockpit flag, not an inherited switch.
     $env:CARLA_NEURAL_VISUAL = '0'
@@ -72,6 +84,17 @@ if ($Mode -eq 'practice') {
         $routeArguments += @('--route-destination', $coordinates[0], $coordinates[1])
     }
     if ($SpawnIndex -ge 0) { $routeArguments += @('--spawn-index', "$SpawnIndex") }
+    if ($DiagnosticDisplace) {
+        $displace = $DiagnosticDisplace.Split(',')
+        if ($displace.Count -ne 2) { throw 'DiagnosticDisplace must be lateral_m,yaw_deg.' }
+        foreach ($value in $displace) {
+            $number = [double]::Parse($value, [Globalization.CultureInfo]::InvariantCulture)
+            if ([double]::IsNaN($number) -or [double]::IsInfinity($number)) { throw 'DiagnosticDisplace values must be finite.' }
+        }
+        $routeArguments += @('--diagnostic-displace', $displace[0], $displace[1])
+    }
+    if ($RouteAheadMeters -gt 0) { $routeArguments += @('--route-ahead-m', $RouteAheadMeters.ToString([Globalization.CultureInfo]::InvariantCulture)) }
+    if ($DiagnosticYawOffset -ne 0) { $routeArguments += @('--diagnostic-yaw-offset', $DiagnosticYawOffset.ToString([Globalization.CultureInfo]::InvariantCulture)) }
 }
 if ($LowScenery) {
     $Map = 'Town02_Opt'
@@ -86,6 +109,14 @@ if ($Mode -in @('training', 'expert')) {
     $Map = 'Town02_Opt'
     $CameraProfile = 'map'
     $LowScenery = $true
+}
+
+# RGB camera rendering hangs the server within seconds under DX11 on the Intel Arc
+# 140V (3 DX11 variants and synchronous ticks all stalled; see docs/CRASH_DIAGNOSIS.md).
+# DX12 ran three cameras steadily, so camera profiles default to it. An explicit
+# -RenderApi always wins; the native map-profile window keeps its verified DX11 path.
+if (-not $PSBoundParameters.ContainsKey('RenderApi') -and $CameraProfile -in @('triple', 'parking', 'safe')) {
+    $RenderApi = 'dx12'
 }
 
 foreach ($required in @($python, $server, $cockpit)) {
@@ -167,17 +198,28 @@ $ownedServer = -not [bool](Get-CarlaProcesses)
 try {
 if ($ownedServer) {
     Write-Host "Starting one CARLA server for $Mode mode..."
-    $quality = if ($Mode -eq 'presentation') { 'Epic' } else { 'Low' }
+    $quality = if ($Mode -eq 'presentation' -or $FullGraphics) { 'Epic' } else { 'Low' }
     $serverArguments = @('-RenderOffScreen', "-$RenderApi", "-quality-level=$quality", '-nosound',
                         '-NoVSync', '-NoBloom', '-NoMotionBlur', '-ResX=320',
                         '-ResY=180', '-fps=20', '-unattended', '-carla-rpc-port=2000')
+    if ($FullGraphics) {
+        $serverArguments = if ($CameraProfile -eq 'triple') {
+            @('-RenderOffScreen', "-$RenderApi", '-quality-level=Epic', '-NoVSync',
+              "-ResX=$displayWidth", "-ResY=$displayHeight", "-fps=$displayFps",
+              '-unattended', '-carla-rpc-port=2000', "-ExecCmds=`"t.MaxFPS $displayFps`"")
+        } else {
+            @('-windowed', "-$RenderApi", '-quality-level=Epic', '-NoVSync',
+              "-ResX=$displayWidth", "-ResY=$displayHeight", "-fps=$displayFps",
+              '-carla-rpc-port=2000', "-ExecCmds=`"t.MaxFPS $displayFps`"")
+        }
+    }
     if ($LowScenery) {
         $serverArguments += '-ExecCmds="t.MaxFPS 20,r.ViewDistanceScale 0.4,r.ShadowQuality 0,r.SSR.Quality 0,r.BloomQuality 0,r.MotionBlurQuality 0,r.VolumetricFog 0,r.DetailMode 0,foliage.DensityScale 0,grass.DensityScale 0,foliage.LODDistanceScale 0.5"'
     }
     elseif ($Mode -eq 'presentation') {
         $serverArguments += '-ExecCmds="t.MaxFPS 20,sg.ShadowQuality 1,sg.PostProcessQuality 1,sg.EffectsQuality 1,sg.FoliageQuality 2,r.ViewDistanceScale 0.7,r.MotionBlurQuality 0"'
     }
-    $windowStyle = 'Hidden'
+    $windowStyle = if ($FullGraphics -and $CameraProfile -ne 'triple') { 'Normal' } else { 'Hidden' }
     if ($Mode -eq 'scenic') {
         $serverArguments = @('-windowed', "-$RenderApi", '-quality-level=Epic',
                              '-ResX=1280', '-ResY=720', '-fps=30', '-carla-rpc-port=2000',
@@ -220,11 +262,14 @@ if (-not $ready) {
 }
 
 $env:PYTHONPATH = "$appRoot\app;$env:PYTHONPATH"
-if ($CameraProfile -eq 'map' -and $Mode -ne 'scenic') {
+if ($CameraProfile -eq 'map' -and $Mode -ne 'scenic' -and -not $FullGraphics) {
     & $python -c "import sys, carla; from simulation.environment import prepare_state_world; client=carla.Client('127.0.0.1',2000); client.set_timeout(45); world=prepare_state_world(client,carla,sys.argv[1]); print('[environment] camera-free world ready: '+world.get_map().name)" $Map
     if ($LASTEXITCODE -ne 0) { throw 'Could not prepare the camera-free input environment.' }
 }
 Write-Host "CARLA is ready. Starting $Mode mode on $Map."
+if ($largeMapGraphics) {
+    Write-Host "Large-map graphics profile: Epic, all scenery layers, ${displayWidth}x${displayHeight}, ${displayFps} FPS target."
+}
     # Keep Python stderr in the log without promoting each native stderr line
     # into a terminating PowerShell error; propagate the real process exit code.
     $ErrorActionPreference = 'Continue'
@@ -237,6 +282,16 @@ Write-Host "CARLA is ready. Starting $Mode mode on $Map."
     if ($Mode -eq 'presentation') {
         $sceneryArguments = @('--presentation')
         $frontCameraFps = 10
+    }
+    $mirrorCameraFps = 2
+    if ($FullGraphics) {
+        $sceneryArguments += '--full-graphics'
+        $frontCameraFps = if ($largeMapGraphics) { 6 } else { 10 }
+        if ($threeCameraGraphics) {
+            # DX12 + client-paced ticks sustained 15/5/5 fps for 60 s (2026-10-06 probe).
+            $frontCameraFps = if ($largeMapGraphics) { 8 } else { 15 }
+            $mirrorCameraFps = if ($largeMapGraphics) { 3 } else { 5 }
+        }
     }
     if ($Mode -eq 'training') {
         $sceneryArguments += @('--human-demo', '--human-target-episodes', "$Episodes",
@@ -255,12 +310,19 @@ Write-Host "CARLA is ready. Starting $Mode mode on $Map."
             Tee-Object -FilePath (Join-Path $logDir "$runName-expert.log")
     }
     else {
+    $serverIds = if ($ownedServer) { @((Get-CarlaProcesses).ProcessId) } else { @() }
+    if ($ScriptedKeys) {
+        # Diagnostic only: replays keys inside the cockpit, never sends desktop input.
+        if (-not (Test-Path -LiteralPath $ScriptedKeys)) { throw "Scripted key file is missing: $ScriptedKeys" }
+        $routeArguments += @('--scripted-keys', (Resolve-Path -LiteralPath $ScriptedKeys).Path)
+    }
     & $python -u $cockpit --map $Map --camera-profile $CameraProfile @sceneryArguments @routeArguments `
-        --window-width 1280 --window-height 720 --target-fps 20 `
-        --camera-fps $frontCameraFps --mirror-camera-fps 2 --input-latch-ms 35 `
+        --carla-window-pids @serverIds `
+        --window-width $displayWidth --window-height $displayHeight --target-fps $displayFps `
+        --camera-fps $frontCameraFps --mirror-camera-fps $mirrorCameraFps --input-latch-ms 35 `
         --route-speed-kmh 30 --graphics-throttle-start-kmh 32 `
         --graphics-speed-cap-kmh 48 --visual-austerity-start-kmh 32 `
-        --visual-austerity-resume-kmh 26 --runtime-rpc-timeout 2 `
+        --visual-austerity-resume-kmh 26 --runtime-rpc-timeout $(if ($largeMapGraphics) { 20 } elseif ($FullGraphics) { 10 } else { 2 }) `
         --max-runtime-seconds $MaxRuntimeSeconds `
         --screenshot-path (Join-Path $logDir "$runName-$CameraProfile.png") 2>&1 |
         Tee-Object -FilePath (Join-Path $logDir "$runName-cockpit.log")

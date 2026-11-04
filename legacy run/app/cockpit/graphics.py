@@ -55,6 +55,26 @@ def apply_scene_streaming_limit(control, speed_kmh, soft_limit_kmh=38.0,
     return control, True
 
 
+READBACK_ALIGNMENT_PX = 64
+
+
+def readback_safe_size(width, height, alignment=READBACK_ALIGNMENT_PX):
+    """Round a camera size so every BGRA row is a multiple of 256 bytes.
+
+    On this Intel Arc/DX11 setup CARLA returns correctly sized buffers whose
+    rows are sheared when ``width * 4`` is not a multiple of 256 bytes (240 px
+    wide failed in every run; 192, 256, 320 and 640 were clean). The height
+    follows the original aspect ratio.
+    """
+    width, height = int(width), int(height)
+    if width <= 0 or height <= 0:
+        raise ValueError("camera size must be positive")
+    safe_width = max(alignment, int(round(width / alignment)) * alignment)
+    if safe_width == width:
+        return width, height
+    return safe_width, max(1, int(round(height * safe_width / width)))
+
+
 def format_speed_kmh(speed_kmh):
     """Natural-width speed text: 0, 9, 42, 160; never 000 or 042."""
     return f"{max(0.0, float(speed_kmh)):.0f}"

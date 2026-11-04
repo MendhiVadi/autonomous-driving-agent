@@ -1,7 +1,13 @@
-"""Windows event-log preflight for thermal and hardware faults.
+"""Thermal and hardware-fault guard for the heavy CARLA + gesture stack.
 
-Applies cooldowns after recent critical thermal events and hardware errors.
-Event logs provide a fallback when live temperature telemetry is unavailable.
+This machine has an Intel Arc integrated GPU with no discrete card, so CARLA's
+renderer, MediaPipe inference, and the CPU all contend for one thermally limited
+package. On 2026-09-09 that combination produced a WHEA fatal hardware error and
+a critical-thermal hibernate within an hour of each other. Windows exposes no
+live temperature source here (both ``MSAcpi_ThermalZoneTemperature`` and the
+``ThermalZoneInformation`` perf counters return nothing), so the next best
+signal is the event log: refuse to relaunch the stack straight back into a
+thermal wall we only just fell off.
 """
 
 from __future__ import annotations
@@ -12,7 +18,7 @@ import math
 import subprocess
 import sys
 
-# Windows event IDs used by the startup health check.
+# Windows event-log signatures worth treating as "the hardware just complained".
 WATCHED_EVENTS = (
     # Kernel-Power 88: "The system was hibernated due to a critical thermal event."
     {"kind": "thermal", "log": "System", "provider": "Microsoft-Windows-Kernel-Power", "id": 88},
@@ -24,7 +30,7 @@ WATCHED_EVENTS = (
     {"kind": "hang", "log": "Application", "provider": "Application Hang", "id": 1002},
 )
 
-# Cooldown durations in seconds.
+# How long to stay off the accelerator after each class of fault.
 DEFAULT_COOLDOWNS = {
     "thermal": 1800.0,   # 30 min - the package needs real time to shed heat
     "hardware": 3600.0,  # 60 min - a fatal hardware error deserves more caution

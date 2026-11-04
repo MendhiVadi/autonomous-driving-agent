@@ -126,7 +126,7 @@ echo   Logs        : "%LOG_DIR%"
 echo   Stop it with: stop_stack.cmd
 echo.
 echo The supervisor runs as a detached Scheduled Task and keeps running even if
-echo this window or its parent process closes.
+echo this window or whatever launched it (including an AI agent) closes.
 
 endlocal
 exit /b 0

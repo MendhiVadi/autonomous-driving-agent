@@ -88,3 +88,23 @@ def advance_route_index(route, location, current_index=0, search_ahead=20):
         range(start, end),
         key=lambda index: route[index][0].transform.location.distance(location),
     )
+
+
+def heading_delta_deg(desired_yaw, current_yaw):
+    """Signed shortest turn from ``current_yaw`` to ``desired_yaw`` in (-180, 180]."""
+    return (float(desired_yaw) - float(current_yaw) + 180.0) % 360.0 - 180.0
+
+
+def route_start_alignment(plan, current_yaw, lookahead=4, threshold_deg=60.0):
+    """Return ``(delta_deg, desired_yaw)`` when a stationary car faces away from its route.
+
+    The reference is a few waypoints ahead so a curved start does not trigger it.
+    ``None`` means no realignment is needed (or the plan is too short to judge).
+    """
+    if len(plan) <= lookahead:
+        return None
+    desired_yaw = plan[lookahead][0].transform.rotation.yaw
+    delta = heading_delta_deg(desired_yaw, current_yaw)
+    if abs(delta) <= threshold_deg:
+        return None
+    return delta, desired_yaw

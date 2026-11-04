@@ -34,13 +34,19 @@ from vehicle.transmission import (
 from cockpit.options import parse_args
 from cockpit.input import (HeldKeyState, build_vehicle_control, can_change_gear,
                            automatic_route_gear, gearbox_state_matches)
-from cockpit.graphics import (apply_turn_stability, apply_speed_sensitive_steering,
+from cockpit.graphics import (readback_safe_size, apply_turn_stability, apply_speed_sensitive_steering,
     apply_scene_streaming_limit, format_speed_kmh, apply_graphics_throttle_neck,
     configure_six_speed_physics, reduced_motion_weather, visual_austerity_transition)
 from cockpit.navigation import (segment_intersects_local_radius, map_bounds_from_segments,
     world_to_map_pixel, map_pixel_to_world, make_neural_route_planner, plan_neural_route,
-    load_deployable_route_policy, advance_route_index)
-from cockpit.world import vehicle_speed_kmh, nearest_distances, try_spawn_vehicle
+    load_deployable_route_policy, advance_route_index, route_start_alignment,
+    heading_delta_deg)
+from cockpit.world import vehicle_speed_kmh, nearest_distances, try_spawn_vehicle, wait_until_settled
+from cockpit.viewport_input import FocusedDrivingKeys, ScriptedDrivingKeys, parse_key_schedule
+from cockpit import hud, recovery
+
+
+LARGE_MAPS = {"Town11", "Town12", "Town13"}
 
 
 def main():
@@ -60,6 +66,17 @@ def main():
     if args.map:
         current_map = world.get_map().name.rsplit("/", 1)[-1]
         requested_map = args.map.rsplit("/", 1)[-1]
+        large_map = requested_map in LARGE_MAPS
+        if large_map:
+            # Town11/12/13 can take several minutes to stream in on this GPU.
+            client.set_timeout(900.0)
+        if large_map:
+            large_settings = world.get_settings()
+            large_settings.spectator_as_ego = False
+            large_settings.tile_stream_distance = 650.0
+            large_settings.actor_active_distance = 350.0
+            world.apply_settings(large_settings)
+            print(f"[map] {requested_map}: streaming nearby tiles around the car; full scene quality stays enabled", flush=True)
         if current_map.lower() != requested_map.lower():
             print(f"[startup] loading map {requested_map}", flush=True)
             if args.low_scenery and requested_map.endswith("_Opt"):
@@ -67,8 +84,15 @@ def main():
                           carla.MapLayer.ParkedVehicles |
                           carla.MapLayer.Walls)
                 world = client.load_world(args.map, map_layers=carla.MapLayer(layers))
+            elif large_map:
+                world = client.load_world(args.map, reset_settings=False,
+                                          map_layers=carla.MapLayer.All)
+            elif args.full_graphics:
+                world = client.load_world(args.map, map_layers=carla.MapLayer.All)
             else:
                 world = client.load_world(args.map)
+        if large_map:
+            client.set_timeout(60.0)
     if args.low_scenery:
         if world.get_map().name.endswith("_Opt"):
             world.unload_map_layer(carla.MapLayer(
@@ -87,6 +111,12 @@ def main():
             cloudiness=0, precipitation=0, precipitation_deposits=0,
             wind_intensity=0, fog_density=0, wetness=0,
             sun_altitude_angle=70, dust_storm=0))
+    if args.full_graphics:
+        if world.get_map().name.endswith("_Opt"):
+            world.load_map_layer(carla.MapLayer.All)
+        world.set_weather(carla.WeatherParameters(
+            cloudiness=20, precipitation=0, precipitation_deposits=0,
+            wind_intensity=65, sun_altitude_angle=45, fog_density=0, wetness=0))
     carla_map = world.get_map()
     blueprints = world.get_blueprint_library()
     # Use a combustion car so a manual gearbox and tachometer are coherent.
@@ -102,7 +132,8 @@ def main():
     else:
         raise ValueError("--spawn-index is outside this map's spawn points")
     original_settings = world.get_settings()
-    command_watchdog = CommandWatchdog(timeout_s=0.5)
+    control_lease_s = 3.0 if args.map in LARGE_MAPS and args.full_graphics else 2.0 if args.full_graphics else 0.5
+    command_watchdog = CommandWatchdog(timeout_s=control_lease_s)
     vehicle = try_spawn_vehicle(world, vehicle_bp, spawn_points)
     if vehicle is None:
         raise RuntimeError("All spawn points are occupied. Stop old actors or restart CARLA.")
@@ -112,7 +143,7 @@ def main():
     human_recorder = None
     try:
         transmission_config = ManualTransmissionConfig()
-        simple_neural_mode = args.camera_profile == "map" and args.preload_route_policy
+        simple_neural_mode = args.preload_route_policy and (args.camera_profile == "map" or args.full_graphics)
         configured_physics = (vehicle.get_physics_control() if simple_neural_mode else
                               configure_six_speed_physics(vehicle, transmission_config))
         print(f"[startup] vehicle ready: {vehicle.id}", flush=True)
@@ -136,19 +167,45 @@ def main():
         settings.substepping = True
         settings.max_substep_delta_time = 0.01
         settings.max_substeps = 10
-        settings.no_rendering_mode = args.camera_profile == "map"
+        settings.no_rendering_mode = args.camera_profile == "map" and not args.full_graphics
         # Own fixed physics ticks in both lightweight modes. An asynchronous
         # world can outrun wall time, multiplying the real camera capture rate.
-        settings.synchronous_mode = args.camera_profile == "map" or args.low_scenery or args.presentation
+        # Offscreen full-graphics camera profiles are paced the same way: the
+        # unthrottled async server ran at 70-90 frames/s and kept the iGPU near
+        # saturation, while 15 Hz client ticks on DX12 held 44% GPU load and
+        # stable RPC. (Under DX11 any RGB camera hung the server within seconds,
+        # in async and synchronous modes alike.)
+        paced_camera_world = bool(args.full_graphics and args.camera_profile != "map")
+        settings.synchronous_mode = (args.camera_profile == "map" or args.low_scenery or
+                                     args.presentation or paced_camera_world)
         world.apply_settings(settings)
-        print("[startup] physics: fixed 0.05s step, 0.01s substeps", flush=True)
+        world_is_synchronous = bool(settings.synchronous_mode)
+        print("[startup] physics: fixed 0.05s step, 0.01s substeps"
+              + (f", client-paced ticks at {args.target_fps} Hz" if paced_camera_world else ""), flush=True)
+        if carla_map.name.rsplit("/", 1)[-1] in LARGE_MAPS:
+            print(f"[map] {carla_map.name.rsplit('/', 1)[-1]}: warming nearby tiles with brakes held", flush=True)
+            client.set_timeout(60.0)
+            try:
+                vehicle.apply_control(carla.VehicleControl(brake=1.0, hand_brake=True))
+                transform = vehicle.get_transform()
+                forward = transform.get_forward_vector()
+                world.get_spectator().set_transform(carla.Transform(
+                    transform.location + carla.Location(
+                        x=-7.0 * forward.x, y=-7.0 * forward.y, z=3.2),
+                    carla.Rotation(pitch=-12, yaw=transform.rotation.yaw)))
+                world.tick(60)
+                for _ in range(3):
+                    world.tick(10)
+            finally:
+                client.set_timeout(10.0)
+            print("[map] nearby tiles warmed; complete scenery remains enabled", flush=True)
         client.set_timeout(10.0)
         pygame.init()
         display = pygame.display.set_mode(
             (args.window_width, args.window_height), pygame.HWSURFACE | pygame.DOUBLEBUF
         )
         pygame.display.set_caption("CARLA Map Driving" if args.camera_profile == "map" else "CARLA Manual Driving Cockpit")
-        # A browser may retain focus after launch. Bring
+        # The launcher commonly leaves Chrome/ChatGPT in the foreground. Bring
         # the newly-created driving window forward so keyboard controls work
         # immediately; the in-window focus warning remains as a fallback.
         try:
@@ -176,16 +233,30 @@ def main():
         def store_latest_frame(name, image):
             """Replace a queued camera frame instead of accumulating latency."""
             target = queues[name]
+            frame = (image.width, image.height, bytes(image.raw_data))
             try:
                 target.get_nowait()
             except queue.Empty:
                 pass
             try:
-                target.put_nowait(image)
+                target.put_nowait(frame)
             except queue.Full:
                 pass
 
+        def camera_tick(desired_fps):
+            """sensor_tick (simulation seconds) for a wanted real-time capture rate."""
+            if not paced_camera_world:
+                return 1.0 / desired_fps
+            ticks = max(1, int(round(args.target_fps / float(desired_fps))))
+            # 0 captures every tick; otherwise land half a step inside the interval.
+            return 0.0 if ticks == 1 else (ticks - 0.5) * 0.05
+
         def add_camera(name, transform, width, height, fov=90, sensor_tick=0.1):
+            requested_size = (width, height)
+            width, height = readback_safe_size(width, height)
+            if (width, height) != requested_size:
+                print(f"[startup] camera {name}: {requested_size[0]}x{requested_size[1]} would be "
+                      f"sheared by GPU row alignment; using {width}x{height}", flush=True)
             bp = camera_bp
             bp.set_attribute("image_size_x", str(width))
             bp.set_attribute("image_size_y", str(height))
@@ -208,22 +279,16 @@ def main():
             sensor.listen(receive)
             print(f"[startup] camera ready: {name} ({sensor.id})", flush=True)
 
-        # Six-zone layout: map, rear view and instruments above the driving views;
+        # Six-zone layout requested by the user: top map/status/instruments,
         # tyre-facing side mirrors, and a large central windshield.
-        top_h = int(args.window_height * 0.24)
-        left_w = int(args.window_width * 0.16)
-        right_w = int(args.window_width * 0.16)
-        instrument_w = int(args.window_width * 0.19)
-        map_rect = (0, 0, left_w, top_h)
-        rear_rect = (left_w, 0, args.window_width - left_w - instrument_w, top_h)
-        instrument_rect = (args.window_width - instrument_w, 0, instrument_w, top_h)
-        left_rect = (0, top_h, left_w, args.window_height - top_h)
-        right_rect = (args.window_width - right_w, top_h, right_w, args.window_height - top_h)
-        front_rect = (left_w, top_h, args.window_width - left_w - right_w,
-                      args.window_height - top_h)
-
-        if args.camera_profile == "map":
-            front_rect = (0, top_h, args.window_width, args.window_height - top_h)
+        zones = hud.compute_layout(args.window_width, args.window_height, args.camera_profile)
+        map_rect, rear_rect, instrument_rect = zones["map"], zones["rear"], zones["instrument"]
+        left_rect, right_rect, front_rect = zones["left"], zones["right"], zones["front"]
+        top_h = map_rect[3]
+        # A native CARLA window exists only for the map profile with full graphics;
+        # camera profiles render offscreen, so this cockpit is the only window.
+        carla_view_visible = bool(args.full_graphics and args.camera_profile == "map")
+        hud_fonts = {"hud": hud_font, "small": small_font, "tick": gauge_tick_font}
 
         camera_views = {
             "front": carla.Transform(
@@ -248,11 +313,11 @@ def main():
         if args.camera_profile != "map":
             front_width, front_height = (640, 360) if args.presentation else (320, 180)
             add_camera("front", camera_views["front"], front_width, front_height, 92,
-                       1.0 / args.camera_fps)
-        if args.camera_profile == "parking":
-            for name in ("rear", "left", "right"):
+                       camera_tick(args.camera_fps))
+        if args.camera_profile in ("parking", "triple"):
+            for name in (("rear", "left", "right") if args.camera_profile == "parking" else ("left", "right")):
                 add_camera(name, camera_views[name], 240, 135, 92,
-                           1.0 / args.mirror_camera_fps)
+                           camera_tick(args.mirror_camera_fps))
         print(f"[startup] camera profile ready: {args.camera_profile} ({len(sensors)} sensor(s))", flush=True)
 
         collision_bp = blueprints.find("sensor.other.collision")
@@ -275,12 +340,9 @@ def main():
             x, y, width, height = rect
             pygame.draw.rect(display, (0, 0, 0), rect)
             try:
-                image = queues[name].get_nowait()
-                # Copy the frame so it remains valid after CARLA reuses its
-                # callback buffer. Retain it between callbacks to prevent
-                # flashing when the display loop is faster than the sensors.
+                image_width, image_height, pixels = queues[name].get_nowait()
                 surface = pygame.image.frombuffer(
-                    image.raw_data, (image.width, image.height), "BGRA"
+                    pixels, (image_width, image_height), "BGRA"
                 ).copy()
                 image_width, image_height = surface.get_size()
                 inner_width = max(1, width - 2 * border)
@@ -315,6 +377,13 @@ def main():
 
         clock = pygame.time.Clock()
         held_keys = HeldKeyState(args.input_latch_ms / 1000.0)
+        driving_keys = FocusedDrivingKeys(pygame, held_keys, args.carla_window_pids)
+        if args.scripted_keys:
+            driving_keys = ScriptedDrivingKeys(
+                pygame, parse_key_schedule(Path(args.scripted_keys).read_text(encoding="utf-8")),
+                time.monotonic)
+            print(f"[test] scripted key schedule loaded from {args.scripted_keys}; "
+                  "window focus and SDL keyboard events are NOT exercised", flush=True)
         steer = 0.0
         selected_gear = 1
         parked = False
@@ -333,7 +402,8 @@ def main():
         ]
         # Waypoint generation uses the parsed client-side map; do it once.
         # Topology endpoint chords cut across bends and are not a road map.
-        map_segments = build_road_segments(carla_map)
+        road_spacing = 12.0 if carla_map.name.rsplit("/", 1)[-1] in LARGE_MAPS else 3.0
+        map_segments = build_road_segments(carla_map, spacing=road_spacing)
         road_index = RoadSegmentIndex(map_segments)
         interactive_map_bounds = map_bounds_from_segments(map_segments)
         town_background = pygame.Surface((args.window_width, args.window_height)).convert()
@@ -342,7 +412,12 @@ def main():
             start_px = world_to_map_pixel(start, interactive_map_bounds, town_background.get_size())
             end_px = world_to_map_pixel(end, interactive_map_bounds, town_background.get_size())
             pygame.draw.line(town_background, (74, 91, 108), start_px, end_px, 3)
-        print(f"[startup] curved road map ready: {len(map_segments)} cached segments", flush=True)
+        print(f"[startup] curved road map ready: {len(map_segments)} cached segments (spacing {road_spacing:g} m)", flush=True)
+        # The policy was trained on references 8 m ahead (4 waypoints at 2 m spacing).
+        # Keep that distance when the route graph is coarser (Town13 uses 8 m spacing).
+        route_resolution_m = 8.0 if carla_map.name.rsplit("/", 1)[-1] in LARGE_MAPS else 2.0
+        route_lookahead_wp = max(1, int(round(8.0 / route_resolution_m)))
+        route_end_margin_wp = max(1, int(round(4.0 / route_resolution_m)))
         prepared_route_model = None
         prepared_route_planner = None
         if args.preload_route_policy:
@@ -350,7 +425,10 @@ def main():
             if args.neural_visual and prepared_route_model.visualizer is None:
                 from telemetry.visualizer import NeuralVisualizer
                 prepared_route_model.visualizer = NeuralVisualizer(prepared_route_model, args.route_policy)
-            prepared_route_planner = make_neural_route_planner(world)
+            planner_resolution = route_resolution_m
+            prepared_route_planner = make_neural_route_planner(
+                world, sampling_resolution=planner_resolution)
+            print(f"[route] route graph ready at {planner_resolution:g} m resolution", flush=True)
             print(f"[startup] neural model and full road graph loaded: {args.route_policy}", flush=True)
         cached_actors = []
         actor_refresh_frame = -100
@@ -376,16 +454,90 @@ def main():
             max_speed_kmh=min(args.route_speed_kmh + 8.0, args.graphics_speed_cap_kmh),
             minimum_obstacle_distance_m=7.0,
             maximum_lane_error_m=2.0,
+            stale_command_after_s=control_lease_s,
         ))
         route_active = False
         route_stalled_since = None
         route_start_assist = False
+        off_route_monitor = recovery.OffRouteMonitor()
+        off_route_too_far = False
+        realign_note_until = 0.0
+        wait_info = None
         route_destination = None
         route_status = ("CLICK A ROAD TO SET DESTINATION" if map_open else
                         "NEURAL READY · PRESS M AND CLICK A ROAD" if prepared_route_model else "")
+
+        def realign_to_route():
+            """Put the stationary car back on its planned route; returns an outcome code."""
+            snap_index = recovery.choose_snap_index(route_plan, vehicle.get_location(), route_index)
+            if snap_index is None:
+                return "too_far"
+            (target_x, target_y, target_z), target_yaw = recovery.snap_pose(route_plan, snap_index)
+            target = carla.Location(x=target_x, y=target_y, z=target_z)
+            others = [actor.get_location() for actor in cached_actors if actor.id != vehicle.id]
+            if not recovery.spot_is_free(target, others):
+                return "occupied"
+            before = vehicle.get_transform()
+            vehicle.set_transform(carla.Transform(target, carla.Rotation(yaw=target_yaw)))
+            vehicle.set_target_velocity(carla.Vector3D())
+            vehicle.set_target_angular_velocity(carla.Vector3D())
+            print(f"[route] auto re-aligned to route: moved {before.location.distance(target):.1f} m, "
+                  f"turned {heading_delta_deg(target_yaw, before.rotation.yaw):.0f} degrees "
+                  f"(waypoint {snap_index})", flush=True)
+            return "done"
+
+        def align_stationary_route_start(plan):
+            """Face the first planned road segment before asking the policy to drive."""
+            if len(plan) <= route_lookahead_wp or vehicle_speed_kmh(vehicle) >= 1.0:
+                return False
+            current = vehicle.get_transform()
+            alignment = route_start_alignment(plan, current.rotation.yaw, lookahead=route_lookahead_wp)
+            if alignment is None:
+                return False
+            heading_delta, desired_yaw = alignment
+            aligned_rotation = carla.Rotation(pitch=current.rotation.pitch,
+                                              yaw=desired_yaw, roll=current.rotation.roll)
+            vehicle.set_transform(carla.Transform(current.location, aligned_rotation))
+            vehicle.set_target_velocity(carla.Vector3D())
+            vehicle.set_target_angular_velocity(carla.Vector3D())
+            print(f"[route] stationary start aligned to planned road: {heading_delta:.1f} degrees", flush=True)
+            return True
+
+        if args.route_ahead_m and not args.route_destination:
+            # Diagnostic destination: follow the spawn lane forward by the requested distance.
+            lane_wp = carla_map.get_waypoint(vehicle.get_location(), project_to_road=True,
+                                             lane_type=carla.LaneType.Driving)
+            travelled = 0.0
+            while lane_wp is not None and travelled < args.route_ahead_m:
+                following = lane_wp.next(min(10.0, args.route_ahead_m - travelled))
+                if not following:
+                    break
+                travelled += lane_wp.transform.location.distance(following[0].transform.location)
+                lane_wp = following[0]
+            if lane_wp is None or travelled < 0.5 * args.route_ahead_m:
+                raise ValueError("Could not find a lane route of the requested length ahead")
+            args.route_destination = [lane_wp.transform.location.x, lane_wp.transform.location.y]
+            print(f"[route] diagnostic destination {travelled:.0f} m ahead: "
+                  f"x={args.route_destination[0]:.1f} y={args.route_destination[1]:.1f}", flush=True)
         if args.route_destination:
             if prepared_route_model is None or args.human_demo:
                 raise ValueError('--route-destination requires a preloaded neural policy')
+            # A freshly spawned car is still dropping onto the road; alignment
+            # (and the diagnostic flip below) need it stationary.
+            vehicle.apply_control(carla.VehicleControl(brake=1.0, hand_brake=True))
+            advance_world = (lambda: world.tick(args.runtime_rpc_timeout)) if world_is_synchronous                 else (lambda: world.wait_for_tick(args.runtime_rpc_timeout))
+            if wait_until_settled(lambda: vehicle_speed_kmh(vehicle), advance_world):
+                print("[route] vehicle settled before planning", flush=True)
+            else:
+                print("[route] vehicle still moving after 4 s; start alignment may be skipped", flush=True)
+            if args.diagnostic_yaw_offset:
+                flipped = vehicle.get_transform()
+                vehicle.set_transform(carla.Transform(flipped.location, carla.Rotation(
+                    pitch=flipped.rotation.pitch, roll=flipped.rotation.roll,
+                    yaw=flipped.rotation.yaw + args.diagnostic_yaw_offset)))
+                advance_world()
+                wait_until_settled(lambda: vehicle_speed_kmh(vehicle), advance_world, max_seconds=2.0)
+                print(f"[test] diagnostic spawn heading offset applied: {args.diagnostic_yaw_offset:g} degrees", flush=True)
             destination_wp = carla_map.get_waypoint(
                 carla.Location(x=args.route_destination[0], y=args.route_destination[1]),
                 project_to_road=True, lane_type=carla.LaneType.Driving)
@@ -396,6 +548,22 @@ def main():
                                            planner=prepared_route_planner)
             if len(route_plan) < 2:
                 raise ValueError('No usable route to requested destination')
+            align_stationary_route_start(route_plan)
+            off_route_monitor.reset_route()
+            if args.diagnostic_displace:
+                # Diagnostic: knock the stationary car off its route to exercise recovery.
+                lateral_m, extra_yaw = args.diagnostic_displace
+                moved = vehicle.get_transform()
+                side = moved.get_right_vector()
+                vehicle.set_transform(carla.Transform(
+                    carla.Location(x=moved.location.x + side.x * lateral_m,
+                                   y=moved.location.y + side.y * lateral_m, z=moved.location.z + 0.2),
+                    carla.Rotation(pitch=moved.rotation.pitch, roll=moved.rotation.roll,
+                                   yaw=moved.rotation.yaw + extra_yaw)))
+                advance_world()
+                wait_until_settled(lambda: vehicle_speed_kmh(vehicle), advance_world, max_seconds=2.0)
+                print(f"[test] diagnostic displacement applied: {lateral_m:g} m sideways, "
+                      f"{extra_yaw:g} degrees", flush=True)
             route_model = prepared_route_model
             route_active, map_open, parked, handbrake = True, False, False, False
             route_status = 'NEURAL ROUTE ACTIVE'
@@ -511,16 +679,23 @@ def main():
             you_surface = small_font.render("YOU", True, (116, 229, 255))
             surface.blit(you_surface, (center_x + 14, center_y - 8))
             pygame.draw.rect(surface, (210, 220, 230), surface.get_rect(), 2, border_radius=8)
-            title = small_font.render("LIVE MAP  •  HEADING UP", True, (245, 245, 245))
-            surface.blit(title, (10, 8))
+            title_text = "LIVE MAP  •  HEADING UP" if width >= 280 else "LIVE MAP"
+            hud.draw_text_fitted(surface, small_font, title_text, (245, 245, 245),
+                                 (10, 6, width - 20, 18))
             waypoint = carla_map.get_waypoint(origin, project_to_road=True)
             if waypoint is not None:
                 location_text = f"Rd {waypoint.road_id}  Ln {waypoint.lane_id}"
             else:
                 location_text = "OFF ROAD"
             coordinates = f"X {origin.x:.0f}  Y {origin.y:.0f}"
-            details = small_font.render(f"{location_text}  •  {coordinates}", True, (184, 198, 212))
-            surface.blit(details, (10, height - details.get_height() - 7))
+            if width >= 280:
+                hud.draw_text_fitted(surface, small_font, f"{location_text}  •  {coordinates}",
+                                     (184, 198, 212), (10, height - 25, width - 20, 18))
+            else:
+                hud.draw_text_fitted(surface, small_font, location_text, (184, 198, 212),
+                                     (10, height - 40, width - 20, 16))
+                hud.draw_text_fitted(surface, small_font, coordinates, (184, 198, 212),
+                                     (10, height - 23, width - 20, 16))
             return surface
 
         def draw_interactive_map():
@@ -571,109 +746,17 @@ def main():
 
         def draw_instruments(speed, rpm, gear, requested_gear, clutch_value,
                              parked_state, parking_brake, control):
-            x, y, width, height = instrument_rect
-            pygame.draw.rect(display, (7, 10, 15), instrument_rect)
-            pygame.draw.rect(display, (82, 98, 119), instrument_rect, 3)
-            radius = max(25, min(36, height // 4, width // 6))
-            centers = ((x + width // 4, y + 48), (x + width * 3 // 4, y + 48))
-            tach_scale_rpm = 7000.0
-            tach_color = ((255, 82, 72) if rpm >= transmission_config.redline_rpm * 0.91 else
-                          (255, 186, 64) if rpm >= transmission_config.redline_rpm * 0.77
-                          else (235, 240, 245))
-            values = (
-                (min(speed, 180.0) / 180.0, (70, 205, 255),
-                 format_speed_kmh(speed), "km/h", False),
-                (min(rpm, tach_scale_rpm) / tach_scale_rpm, tach_color,
-                 None, "x1000 RPM", True),
-            )
-            for center, (fraction, color, value, unit, is_tach) in zip(centers, values):
-                pygame.draw.circle(display, (12, 18, 27), center, radius)
-                pygame.draw.circle(display, (90, 105, 123), center, radius, 2)
-                redline_fraction = transmission_config.redline_rpm / tach_scale_rpm
-                if is_tach:
-                    for segment in range(12):
-                        start_fraction = redline_fraction + (1.0 - redline_fraction) * segment / 12.0
-                        end_fraction = redline_fraction + (1.0 - redline_fraction) * (segment + 1) / 12.0
-                        start_angle = math.radians(135 + start_fraction * 270)
-                        end_angle = math.radians(135 + end_fraction * 270)
-                        arc_radius = radius - 5
-                        start_point = (center[0] + int(arc_radius * math.cos(start_angle)),
-                                       center[1] + int(arc_radius * math.sin(start_angle)))
-                        end_point = (center[0] + int(arc_radius * math.cos(end_angle)),
-                                     center[1] + int(arc_radius * math.sin(end_angle)))
-                        pygame.draw.line(display, (230, 55, 48), start_point, end_point, 3)
-                tick_count = 14 if is_tach else 10
-                for tick in range(tick_count + 1):
-                    tick_fraction = tick / tick_count
-                    angle = math.radians(135 + tick_fraction * 270)
-                    outer = (center[0] + int((radius - 3) * math.cos(angle)),
-                             center[1] + int((radius - 3) * math.sin(angle)))
-                    major_tick = tick % 2 == 0
-                    inner_length = radius - (10 if major_tick else 6)
-                    inner = (center[0] + int(inner_length * math.cos(angle)),
-                             center[1] + int(inner_length * math.sin(angle)))
-                    tick_color = ((255, 72, 62) if is_tach and tick_fraction >= redline_fraction
-                                  else (154, 168, 184))
-                    pygame.draw.line(display, tick_color, inner, outer, 2 if major_tick else 1)
-                    if is_tach and tick % 4 == 0:
-                        label = gauge_tick_font.render(str(tick // 2), True, tick_color)
-                        label_radius = radius - 14
-                        label_center = (
-                            center[0] + int(label_radius * math.cos(angle)),
-                            center[1] + int(label_radius * math.sin(angle)),
-                        )
-                        display.blit(label, label.get_rect(center=label_center))
-                angle = math.radians(135 + max(0.0, min(1.0, fraction)) * 270)
-                end = (center[0] + int((radius - 11) * math.cos(angle)),
-                       center[1] + int((radius - 11) * math.sin(angle)))
-                needle_color = (245, 247, 250) if is_tach else color
-                pygame.draw.line(display, needle_color, center, end, 3)
-                pygame.draw.circle(display, (224, 62, 54) if is_tach else color, center, 4)
-                if value is not None:
-                    value_surface = hud_font.render(value, True, (245, 248, 252))
-                    display.blit(value_surface, value_surface.get_rect(center=(center[0], center[1] + 7)))
-                unit_surface = small_font.render(unit, True, color)
-                display.blit(unit_surface, unit_surface.get_rect(center=(center[0], center[1] + radius - 5)))
+            hud.draw_instruments(
+                pygame, display, hud_fonts, instrument_rect, transmission_config,
+                speed, rpm, gear, requested_gear, clutch_value, parked_state,
+                parking_brake, control, automatic=simple_neural_mode,
+                gear_in_sync=gearbox_state_matches(requested_gear, gear))
 
-            selected = selector_name(gear, parked_state)
-            for index, label in enumerate("PRND"):
-                color = (70, 205, 255) if label == selected else (132, 145, 162)
-                label_surface = hud_font.render(label, True, color)
-                display.blit(label_surface, (x + 10 + index * 28, y + height - 56))
-            actual_gear_name = manual_gear_name(requested_gear, parked_state)
-            gear_box = pygame.Rect(x + width - 61, y + height - 64, 51, 27)
-            pygame.draw.rect(display, (20, 33, 45), gear_box, border_radius=5)
-            pygame.draw.rect(display, (70, 205, 255), gear_box, 1, border_radius=5)
-            gear_surface = hud_font.render(actual_gear_name, True, (92, 220, 255))
-            display.blit(gear_surface, gear_surface.get_rect(center=gear_box.center))
-            if not gearbox_state_matches(requested_gear, gear):
-                sync = small_font.render("GEAR SYNC", True, (255, 102, 92))
-                display.blit(sync, sync.get_rect(midtop=(x + width // 2, y + 87)))
-            else:
-                shift = recommended_shift(
-                    gear, rpm, control.throttle, transmission_config, speed,
-                )
-                if shift:
-                    shift_surface = small_font.render(shift, True, tach_color)
-                    display.blit(shift_surface, shift_surface.get_rect(midtop=(x + width // 2, y + 87)))
-
-            bars = (("G", control.throttle, (77, 214, 144)),
-                    ("B", control.brake, (255, 102, 92)),
-                    ("C", clutch_value, (255, 196, 76)))
-            bar_y = y + height - 23
-            for index, (label, value, color) in enumerate(bars):
-                bar_x = x + 10 + index * (width // 3)
-                display.blit(small_font.render(label, True, (210, 220, 230)), (bar_x, bar_y - 1))
-                track = pygame.Rect(bar_x + 16, bar_y + 4, max(16, width // 3 - 30), 8)
-                pygame.draw.rect(display, (48, 57, 70), track)
-                pygame.draw.rect(display, color,
-                                 (track.x, track.y, int(track.width * max(0.0, min(1.0, value))), track.height))
-            if parking_brake:
-                display.blit(small_font.render("PARK", True, (255, 116, 96)), (x + width - 50, y + 6))
-
-        def draw_parking_guides(name, rect, distance):
+        def draw_parking_guides(name, rect, distance, lines=True):
             x, y, width, height = rect
-            if name in ("left", "right"):
+            if not lines:
+                pass
+            elif name in ("left", "right"):
                 inner_x = x + width - 24 if name == "left" else x + 24
                 pygame.draw.line(display, (70, 220, 150), (inner_x, y + height // 3),
                                  (inner_x, y + height - 24), 2)
@@ -699,17 +782,14 @@ def main():
                 display.blit(warning, (x + 8, y + height - warning.get_height() - 7))
 
         def draw_control_help(focused, status_message):
-            if not focused:
-                warning = speed_font.render("CLICK THIS WINDOW TO DRIVE", True, (255, 210, 70))
-                panel = pygame.Surface((warning.get_width() + 40, warning.get_height() + 24), pygame.SRCALPHA)
-                panel.fill((0, 0, 0, 220))
-                panel.blit(warning, (20, 12))
-                display.blit(panel, panel.get_rect(center=(args.window_width // 2, args.window_height // 2)))
-            elif status_message:
-                status = hud_font.render(status_message, True, (255, 210, 70))
-                display.blit(status, status.get_rect(
-                    center=(front_rect[0] + front_rect[2] // 2, front_rect[1] + 24)
-                ))
+            # Neural route driving needs no keyboard focus, so only warn when
+            # the keys would actually be ignored.
+            if not focused and not route_active:
+                hud.draw_focus_hint(
+                    pygame, display, hud_fonts, front_rect,
+                    "CLICK THIS WINDOW OR THE CARLA VIEW TO DRIVE" if carla_view_visible
+                    else "CLICK THIS WINDOW TO DRIVE")
+            hud.draw_status_line(pygame, display, hud_fonts, front_rect, status_message)
         agent_actions = queue.Queue(maxsize=1)
         latest_agent_command = None
         latest_agent_command_at = 0.0
@@ -728,15 +808,20 @@ def main():
         print("[route] controller: neural policy with safety arbitration; no BasicAgent control fallback", flush=True)
         if args.neural_lane_assist:
             print("[route] bounded lane assistance enabled (+/-0.16); raw predictions remain visible", flush=True)
-        print("CLICK cockpit first. W/Up=accelerator, S/Down=brake, A/D or arrows=steer")
+        print("Click the cockpit window to drive. W/Up=accelerator, S/Down=brake, A/D or arrows=steer")
         print("M=destination map, click road=route drive, manual input=cancels route")
         print("Shift/Ctrl=clutch, comma/period=shift down/up, 1-6=direct gear, R/N/P=selector, Space=handbrake")
         frame_number = 0
+        last_drive_log_at = 0.0
         screenshot_saved = False
         run_started_at = time.monotonic()
+        if args.scripted_keys:
+            driving_keys.start()
+        command_watchdog.command_received()
         # Exclude model/road-graph loading from the first runtime FPS sample.
         performance_started = run_started_at
         while running:
+            wait_info = None
             map_key_pressed = False
             for event in pygame.event.get():
                 if event.type == pygame.KEYDOWN:
@@ -782,6 +867,8 @@ def main():
                             )
                             if len(route_plan) < 2:
                                 raise RuntimeError("planner returned no usable route")
+                            if not args.human_demo:
+                                align_stationary_route_start(route_plan)
                             route_length_m = sum(
                                 route_plan[index - 1][0].transform.location.distance(
                                     route_plan[index][0].transform.location,
@@ -814,6 +901,8 @@ def main():
                                     route_active = True
                                     route_stalled_since = None
                                     route_start_assist = False
+                                    off_route_monitor.reset_route()
+                                    off_route_too_far = False
                                     route_status = "NEURAL ROUTE ACTIVE · MANUAL INPUT CANCELS"
                                 else:
                                     # Practice mode still gets a usable green
@@ -851,8 +940,8 @@ def main():
                     route_plan = []
                     route_destination = None
                     vehicle.set_transform(random.choice(spawn_points))
-                    vehicle.set_velocity(carla.Vector3D())
-                    vehicle.set_angular_velocity(carla.Vector3D())
+                    vehicle.set_target_velocity(carla.Vector3D())
+                    vehicle.set_target_angular_velocity(carla.Vector3D())
                     selected_gear, cached_actual_gear, parked, handbrake, steer = 1, 1, False, False, 0.0
                     rpm_estimator.reset()
                     collision_state["value"] = False
@@ -873,6 +962,12 @@ def main():
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_n:
                     route_active = False
                     selected_gear, parked = 0, False
+                elif (simple_neural_mode and event.type == pygame.KEYDOWN and event.key in (
+                        pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5, pygame.K_6,
+                        pygame.K_COMMA, pygame.K_PERIOD)):
+                    # The stock gearbox shifts itself here; a route keeps running.
+                    shift_status = "AUTOMATIC GEARBOX - USE R / N / P"
+                    shift_status_until = pygame.time.get_ticks() + 1500
                 elif event.type == pygame.KEYDOWN and event.key in (
                         pygame.K_1, pygame.K_2, pygame.K_3,
                         pygame.K_4, pygame.K_5, pygame.K_6):
@@ -899,7 +994,7 @@ def main():
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_h:
                     handbrake = not handbrake
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_c:
-                    if args.camera_profile == "map" or args.low_scenery or args.presentation:
+                    if args.camera_profile == "map" or args.low_scenery or args.presentation or args.full_graphics:
                         continue
                     weather_index = (weather_index + 1) % len(weather_presets)
                     selected_weather = weather_presets[weather_index][0]
@@ -918,7 +1013,7 @@ def main():
                     route_status = "CLICK A ROAD TO SET DESTINATION" if map_open else route_status
                     print("[map] destination map " + ("opened" if map_open else "closed"), flush=True)
             map_key_was_down = m_down
-            keys = held_keys
+            keys = driving_keys
             manual_drive_keys = (
                 pygame.K_w, pygame.K_UP, pygame.K_s, pygame.K_DOWN,
                 pygame.K_a, pygame.K_LEFT, pygame.K_d, pygame.K_RIGHT,
@@ -965,12 +1060,12 @@ def main():
                     distance_to_destination = vehicle.get_location().distance(
                         route_destination,
                     )
-                    if distance_to_destination <= 4.0 or route_index >= len(route_plan) - 2:
+                    if distance_to_destination <= 4.0 or route_index >= len(route_plan) - route_end_margin_wp:
                         route_active = False
                         route_status = "DESTINATION REACHED"
                         control = carla.VehicleControl(brake=1.0)
                     else:
-                        reference_index = min(route_index + 4, len(route_plan) - 1)
+                        reference_index = min(route_index + route_lookahead_wp, len(route_plan) - 1)
                         reference_waypoint = route_plan[reference_index][0]
                         route_features = make_observation(
                             vehicle,
@@ -1000,6 +1095,7 @@ def main():
                         if args.neural_lane_assist:
                             neural_steering, lane_correction, assisted_speed_target = apply_lane_assistance(
                                 route_features, neural_steering)
+                        model_brake = brake
                         if simple_neural_mode:
                             now = time.monotonic()
                             if is_stall_candidate(route_features[2], accelerator, brake):
@@ -1054,8 +1150,52 @@ def main():
                             route_status = "NEURAL ROUTE ACTIVE"
                         if args.neural_lane_assist and not safety_reasons:
                             route_status += ' · LANE ASSIST'
+                        if simple_neural_mode:
+                            deliberate_stop = bool(collision_state["value"]) or any(
+                                reason in ("collision", "obstacle", "red_light") for reason in safety_reasons)
+                            recovery_report = off_route_monitor.update(
+                                route_features[2] < 1.0,
+                                recovery.is_off_route(route_features, args.neural_lane_assist),
+                                deliberate_stop)
+                            if recovery_report["phase"] == "idle":
+                                off_route_too_far = False
+                            elif recovery_report["phase"] == "ready":
+                                outcome = realign_to_route()
+                                if outcome == "done":
+                                    off_route_monitor.record_attempt()
+                                    route_stalled_since, route_start_assist = None, False
+                                    realign_note_until = time.monotonic() + 2.5
+                                elif outcome == "too_far":
+                                    off_route_too_far = True
+                                    off_route_monitor.attempts = off_route_monitor.max_attempts
+                                else:
+                                    route_status = "SPOT OCCUPIED · WAITING TO RE-ALIGN"
+                            if recovery_report["phase"] == "waiting":
+                                seconds_left = max(1, int(math.ceil(
+                                    recovery_report["total_s"] - recovery_report["elapsed_s"])))
+                                route_status = f"OFF ROUTE · RE-ALIGNING IN {seconds_left} S"
+                                wait_info = recovery.wait_report(
+                                    "realign", "Re-aligning to route",
+                                    recovery_report["elapsed_s"], recovery_report["total_s"])
+                            elif recovery_report["phase"] == "exhausted" or off_route_too_far:
+                                route_status = ("TOO FAR FROM ROUTE · PRESS BACKSPACE TO RESET" if off_route_too_far
+                                                else "STILL OFF ROUTE · PRESS BACKSPACE TO RESET")
+                                wait_info = recovery.wait_report(
+                                    "exhausted", "Press Backspace to reset", 0.0, 1.0)
+                            elif (route_stalled_since is not None and not route_start_assist
+                                  and not safety_reasons and route_features[2] < 1.0):
+                                start_total = recovery.start_wait_total(model_brake)
+                                start_elapsed = time.monotonic() - route_stalled_since
+                                if start_elapsed < start_total:
+                                    route_status = "WAITING FOR SAFE START · {} S".format(
+                                        max(1, int(math.ceil(start_total - start_elapsed))))
+                                    wait_info = recovery.wait_report(
+                                        "start", "Waiting for safe start", start_elapsed, start_total)
+                            if time.monotonic() < realign_note_until:
+                                route_status = "RE-ALIGNED TO ROUTE"
                         if route_model.visualizer is not None:
                             route_model.visualizer.publish_runtime({
+                                'wait': wait_info,
                                 'status': route_status, 'safety_reasons': safety_reasons,
                                 'speed_kmh': route_features[2], 'features': route_features,
                                 'start_assist': route_start_assist,
@@ -1089,7 +1229,10 @@ def main():
                     parked=parked, handbrake=handbrake
                 )
                 clutch_position = 1.0 if (keys[pygame.K_LSHIFT] or keys[pygame.K_LCTRL]) else 0.0
-                if not pygame.key.get_focused():
+                if simple_neural_mode and selected_gear > 0:
+                    # Stock automatic gearbox: do not pin first gear and cap the speed.
+                    control.manual_gear_shift = False
+                if not driving_keys.focused():
                     control.throttle = 0.0
                     control.brake = 1.0
                     held_keys.clear()
@@ -1119,7 +1262,7 @@ def main():
             control_signature = (
                 tuple(input_labels), round(control.throttle, 2), round(control.brake, 2),
                 round(control.steer, 2), bool(control.hand_brake), int(control.gear),
-                bool(pygame.key.get_focused()),
+                bool(driving_keys.focused()),
             )
             control_now = time.monotonic()
             immediate_control_change = (last_control_signature is None or
@@ -1141,19 +1284,27 @@ def main():
             if prepared_route_model is not None and prepared_route_model.visualizer is not None:
                 prepared_route_model.visualizer.publish_runtime({
                     'status': route_status if not map_open else 'DESTINATION MAP OPEN · PAUSED',
+                    'wait': wait_info if (route_active and not map_open) else None,
                     'route_active': route_active and not map_open,
                     'applied': {'steering': control.steer, 'accelerator': control.throttle,
                                 'brake': control.brake},
                 })
 
-            if args.camera_profile == "map" or args.low_scenery or args.presentation:
+            if args.camera_profile == "map" or args.low_scenery or args.presentation or paced_camera_world:
                 world.tick(args.runtime_rpc_timeout)
+            if args.full_graphics and args.camera_profile == "map":
+                transform = vehicle.get_transform()
+                forward = transform.get_forward_vector()
+                world.get_spectator().set_transform(carla.Transform(
+                    transform.location + carla.Location(
+                        x=-7.0 * forward.x, y=-7.0 * forward.y, z=3.2),
+                    carla.Rotation(pitch=-12, yaw=transform.rotation.yaw)))
 
             if human_demo_active and time.monotonic() - last_human_sample_at >= 0.05:
                 route_index = advance_route_index(
                     route_plan, vehicle.get_location(), route_index,
                 )
-                reference_index = min(route_index + 4, len(route_plan) - 1)
+                reference_index = min(route_index + route_lookahead_wp, len(route_plan) - 1)
                 reference_waypoint = route_plan[reference_index][0]
                 observation = make_observation(
                     vehicle, world, carla.TrafficLightState.Red, cached_actors,
@@ -1213,9 +1364,11 @@ def main():
             display.fill((5, 8, 12))
             if args.camera_profile != "map":
                 draw_frame("front", front_rect, crop_to_fill=True)
-                draw_frame("left", left_rect, crop_to_fill=True)
-                draw_frame("rear", rear_rect, crop_to_fill=True)
-                draw_frame("right", right_rect, crop_to_fill=True)
+                if args.camera_profile in ("parking", "triple"):
+                    draw_frame("left", left_rect, crop_to_fill=True)
+                    draw_frame("right", right_rect, crop_to_fill=True)
+                if args.camera_profile == "parking":
+                    draw_frame("rear", rear_rect, crop_to_fill=True)
             if frame_number - actor_refresh_frame >= max(1, args.target_fps // 2):
                 all_actors = world.get_actors()
                 cached_actors = list(all_actors.filter("vehicle.*")) + list(all_actors.filter("walker.*"))
@@ -1234,7 +1387,7 @@ def main():
                     args.visual_austerity_start_kmh,
                     args.visual_austerity_resume_kmh,
                 )
-                if args.camera_profile != "map" and not (args.low_scenery or args.presentation) and next_austerity != visual_austerity_active:
+                if args.camera_profile != "map" and not (args.low_scenery or args.presentation or args.full_graphics) and next_austerity != visual_austerity_active:
                     visual_austerity_active = next_austerity
                     selected_weather = weather_presets[weather_index][0]
                     world.set_weather(
@@ -1254,10 +1407,13 @@ def main():
                     clutch_position, now - last_rpm_update,
                 )
                 last_rpm_update = now
-            if args.camera_profile == "parking":
-                draw_parking_guides("left", left_rect, cached_distances["left"])
-                draw_parking_guides("rear", rear_rect, cached_distances["rear"])
-                draw_parking_guides("right", right_rect, cached_distances["right"])
+            if args.camera_profile in ("parking", "triple"):
+                draw_parking_guides("left", left_rect, cached_distances["left"],
+                                    lines=args.camera_profile == "parking")
+                draw_parking_guides("right", right_rect, cached_distances["right"],
+                                    lines=args.camera_profile == "parking")
+                if args.camera_profile == "parking":
+                    draw_parking_guides("rear", rear_rect, cached_distances["rear"])
             elif args.camera_profile == "map":
                 draw_panel_label("MAP DRIVING  |  M: DESTINATION MAP", rear_rect)
                 for index, help_text in enumerate((
@@ -1282,6 +1438,8 @@ def main():
                 active_status = "LIVE INPUT: " + " + ".join(input_labels)
                 if throttle_neck_active:
                     active_status += " · GRAPHICS THROTTLE"
+            elif args.camera_profile == "triple":
+                active_status = ""  # route state is shown in the status panel
             elif route_active:
                 active_status = route_status + " · M MAP · F8 NETWORK"
             elif human_demo_active:
@@ -1300,10 +1458,26 @@ def main():
                 active_status = (active_status + " · " if active_status else "") + "SPEED-SAFE STEERING"
             if scene_limit_active:
                 active_status = (active_status + " · " if active_status else "") + "48 KM/H STABILITY LIMIT"
-            draw_control_help(pygame.key.get_focused() or args.agent_stdin, active_status)
+            draw_control_help(driving_keys.focused() or args.agent_stdin, active_status)
+            if args.camera_profile == "triple":
+                hud.draw_status_panel(
+                    pygame, display, hud_fonts, rear_rect, "FRONT  /  LEFT  /  RIGHT CAMERAS",
+                    route_status if (route_active or route_status) else "MANUAL DRIVING",
+                    ("W/S THROTTLE / BRAKE    A/D STEER    SPACE HANDBRAKE",
+                     "M DESTINATION MAP    F8 NETWORK PAGE    ESC EXIT"))
+                feed_now = time.monotonic()
+                with camera_lock:
+                    feed_ages = {name: (None if name not in camera_last_frame_at
+                                        else feed_now - camera_last_frame_at[name])
+                                 for name in ("front", "left", "right")}
+                for name, caption, rect in (("left", "LEFT", left_rect), ("right", "RIGHT", right_rect),
+                                            ("front", "FRONT", front_rect)):
+                    age = feed_ages[name]
+                    if name != "front" or age is None or age > hud.STALE_FEED_AFTER_S:
+                        hud.draw_feed_overlay(pygame, display, hud_fonts, rect, caption, age)
             if map_open:
                 draw_interactive_map()
-            required_frames = 0 if args.camera_profile == "map" else (4 if args.camera_profile == "parking" else 1)
+            required_frames = 0 if args.camera_profile == "map" else (4 if args.camera_profile == "parking" else 3 if args.camera_profile == "triple" else 1)
             if (args.screenshot_path and not screenshot_saved and
                     frame_number >= 35 and
                     len(last_scaled_frames) >= required_frames and minimap_surface is not None):
@@ -1318,7 +1492,7 @@ def main():
             performance_frames += 1
             performance_elapsed = time.monotonic() - performance_started
             if performance_elapsed >= 5.0:
-                required_views = () if args.camera_profile == "map" else (("front", "rear", "left", "right") if args.camera_profile == "parking" else ("front",))
+                required_views = () if args.camera_profile == "map" else (("front", "rear", "left", "right") if args.camera_profile == "parking" else ("front", "left", "right") if args.camera_profile == "triple" else ("front",))
                 with camera_lock:
                     stale_views = [name for name in required_views
                                    if time.monotonic() - camera_last_frame_at.get(name, run_started_at) > 10.0]
@@ -1337,10 +1511,23 @@ def main():
                 }), flush=True)
                 performance_started = time.monotonic()
                 performance_frames = 0
+            if time.monotonic() - last_drive_log_at >= 2.0:
+                last_drive_log_at = time.monotonic()
+                print("[drive] " + json.dumps({
+                    "speed_kmh": round(cached_speed_kmh, 1), "gear": cached_actual_gear,
+                    "yaw": round(vehicle.get_transform().rotation.yaw, 1),
+                    "throttle": round(control.throttle, 2), "brake": round(control.brake, 2),
+                    "steer": round(control.steer, 2), "focused": bool(driving_keys.focused()),
+                    "route_active": bool(route_active), "map_open": bool(map_open),
+                    "route_index": route_index if route_plan else None,
+                    "route_len": len(route_plan)}), flush=True)
             if (args.max_runtime_seconds and
                     time.monotonic() - run_started_at >= args.max_runtime_seconds):
                 running = False
     finally:
+        # A stalled server answers none of these; fail each call quickly and let
+        # the launcher close the owned server instead of waiting 10 s per actor.
+        client.set_timeout(min(args.runtime_rpc_timeout, 3.0))
         actions = [("stop watchdog", command_watchdog.stop),
                    ("emergency brake", lambda: vehicle.apply_control(carla.VehicleControl(brake=1.0, hand_brake=True)))]
         if human_recorder is not None:

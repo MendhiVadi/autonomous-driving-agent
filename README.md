@@ -1,61 +1,85 @@
 # Autonomous driving agent
 
-A Windows CARLA project with a manual driving host, an experimental two-computer control link, and a separate imitation-learning runtime.
+Three independent application folders:
 
-| Application | Role |
-| --- | --- |
-| [Primary laptop](primary%20laptop/README.md) | CARLA, graphics, physics, vehicle controls and the reset/step gateway |
-| [Secondary laptop](secondary%20laptop/README.md) | Remote client, connection diagnostics and the planned RL trainer |
-| [Legacy run](legacy%20run/README.md) | Manual driving, map cockpit, imitation-policy inference and data collection |
+| Folder | Responsibility | Current status |
+| --- | --- | --- |
+| [laptop 1](laptop%201/README.md) | CARLA, graphics, physics, vehicle ownership and final safety | Full-graphics manual host and authenticated TLS reset/step gateway |
+| [laptop 2](laptop%202/README.md) | Reinforcement learning from scratch, inference and navigation decisions | Portable paired client and no-training diagnostics; trainer pending |
+| [legacy run](legacy%20run/README.md) | Complete current one-laptop system | Existing manual and assisted-neural modes, datasets, weights and tests |
 
-Each application owns its source and configuration. The primary computer advances the simulation; the secondary computer sends bounded commands over an authenticated connection. The RL trainer is still under development. The legacy policy uses road and vehicle state, rather than camera images.
+## Run
 
-## Quick start
+For the existing neural system, open `legacy run` and run `run_neural.cmd`.
+Its full-graphics manual mode is `run_car.cmd`.
+For the same existing model with rendered scenery and its local activity page,
+use `legacy run/run_graphics_neural.cmd`: a three-camera (front, left, right) Epic cockpit
+rendered offscreen with DX12 (DX11 hangs CARLA on RGB cameras on this PC). Its Town02_Opt
+manual and neural-route checks passed in bounded runs on 2026-10-06; real keyboard
+focus by hand is still to be confirmed.
 
-Install CARLA 0.9.16 for Windows and Python 3.12. Set `CARLA_ROOT` to the extracted CARLA directory, or edit the primary application's `config/runtime.json`.
+For the new simulation host's independent graphics/manual check, open
+`laptop 1` and run `run_manual.cmd`. Use
+`run_manual.cmd -Check` to validate paths/imports without starting CARLA.
 
-From PowerShell in this repository:
+Run `python -I -B check_local_link.py` for a two-process localhost rehearsal.
+It uses toy physics and fixed controls: no CARLA launch, model, or training.
+Use `legacy run/run_large_map_neural.cmd` for Town13 with the existing model,
+full graphics and the neural activity website. Use `laptop 1/run_large_map.cmd`
+for the separate manual map-only mode. In three bounded 2026-10-06 trials the neural
+launcher loaded Town13 in about two minutes, ran its three cameras for 120-150 s
+(cockpit 9-13 FPS) and shut down cleanly; the network drove a straight 120 m route to
+its destination but stopped at the first sharp corner of a 200 m route (twice), so
+Town13 neural driving stays experimental. Use the default
+Town02_Opt for the first two-PC connection;
+see the [map status](laptop%201/docs/MAPS.md) for the exact boundary.
 
-```powershell
-$env:CARLA_ROOT = 'C:\CARLA\CARLA_0.9.16'
-powershell.exe -NoProfile -File 'primary laptop/scripts/setup_host_runtime.ps1'
-& '.\primary laptop\run_manual.cmd' -Check
-& '.\primary laptop\run_manual.cmd'
-```
+The RL policy/trainer is not implemented. Encrypted LAN software is prepared;
+physical two-PC routing/firewall/latency checks remain pending. The completed RL
+system must drive with full scenery, Epic-quality graphics, shadows and
+wind-blown foliage on the laptop 1. The existing trained imitation
+policy is preserved inside legacy and will not initialize RL training.
 
-The setup script installs CARLA's bundled Python 3.12 API wheel into the host's own environment. Manual mode uses Epic graphics, a native 1280 x 720 viewport and a 30 FPS cap. Click the CARLA window, drive with WASD or the arrow keys, and press Esc to exit. Only one managed CARLA session can run at a time.
+## Independence
 
-## Test the control link
+Each application owns its source, configuration, models and output paths.
+Required helpers were copied as ordinary independent files. There are no
+symlinks, shared source folders, sibling imports or fallback searches across
+these three applications. The two new applications now exchange versioned
+network messages locally or over a paired encrypted private-IP connection.
+Non-loopback operation requires TLS and an explicit allowed peer. No firewall
+rules or adapter settings are changed automatically.
 
-The localhost rehearsal uses toy physics and requires no CARLA installation:
+CARLA's third-party installation and Python environment stay outside the
+repository for legacy. The primary host now also has an isolated Python 3.12
+environment using the official API wheel bundled with CARLA 0.9.16. Neither
+application's code is loaded from the other. One CARLA
+session runs at a time, enforced by the existing Windows session mutex.
 
-```powershell
-python -I -B check_local_link.py
-```
+## Project knowledge in Obsidian
 
-For TLS, install OpenSSL or use the copy included with Git for Windows, then create pairing credentials and a private client package:
+Open `vault` as a folder vault in Obsidian and start with
+[the knowledge index](vault/00-Index.md). AI agents read this index and maintain
+the relevant notes alongside meaningful changes. Laptop 2 has a portable vault
+snapshot included in its client package. The Ethernet transfer share also holds
+`obsidian-vault.zip` for a standalone copy. These are explicit snapshots, not
+automatic two-way synchronization. Preserve local notes when exchanging updates.
 
-```powershell
-python -I -B 'primary laptop/prepare_pairing.py'
-python -I -B build_handoff.py
-python -I -B check_local_link.py --tls
-```
+## Maintenance checks
 
-The generated ZIP contains a client access token. Transfer it privately to the second computer. Credentials and transfer packages are excluded from Git. Follow the [two-PC setup guide](primary%20laptop/docs/CONNECT_SECOND_PC.md) before opening the network gateway.
+Run `python -B verify_layout.py` with Python 3.11+ to check source isolation,
+local documentation links, and Python syntax without launching a simulator.
+Run `verify.cmd` inside `legacy run` for the retained system's regressions.
+Each new folder also contains its own test runner or environment check.
+The root link checker is maintenance orchestration only; neither application
+depends on it when deployed separately.
 
-## Tests
+See the [connection-day checklist](laptop%201/docs/CONNECT_SECOND_PC.md).
+`python -I -B check_local_link.py --tls` tests the paired encrypted connection
+without CARLA or training. The latest ZIP in `handoff` is for transfer to the
+other PC; it contains a private client token and must not be uploaded publicly.
 
-```powershell
-python -I -B verify_layout.py
-python -I -B 'primary laptop/tests/run_tests.py'
-python -I -B 'secondary laptop/tests/run_tests.py'
-& '.\legacy run\verify.cmd'
-```
-
-The host TLS tests use OpenSSL. The legacy tests also require the dependencies described in its README. The latest maintenance checks passed 81 host, 23 client and 179 legacy tests. See [validation notes](primary%20laptop/docs/VALIDATION.md).
-
-## Current limits
-
-Town02_Opt is the default map. Town13 passed a short stationary manual check, but gateway initialization remains intermittent. Physical two-PC latency, disconnect recovery, traffic scenarios and sustained driving still need validation.
-
-The CARLA gateway currently supports short empty-road routes. Its reward function and safety checks are experimental; they do not establish autonomous-driving performance. Trained weights, recordings, local logs, backups and simulator binaries are not included. Legacy neural mode requires a compatible policy supplied separately.
+The previously approved four files remain deleted. This reorganization moved
+the remaining one-laptop files without discarding them. Historical backups
+and generated evidence are retained inside `legacy run`; do not treat them
+as active source. See [maintenance notes](legacy%20run/docs/MAINTENANCE.md).

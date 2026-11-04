@@ -1,5 +1,20 @@
 # Two driving modes
 
+Implementation plan (2026-09-19):
+
+1. Keep the existing trained contract-v2 policy, training data and safety supervisor.
+2. Add `run_car.cmd`: one manual car, native CARLA viewport, Epic scenery,
+   animated wind, no neural model, browser, RGB sensors or extra cockpit.
+3. Add `run_neural.cmd`: Town02_Opt, no scene rendering, fixed 20 Hz physics,
+   the existing neural controller and destination map. Keep practice compatible.
+4. Sample actual lane curves once, index nearby map segments, cache the town
+   background and reuse the parsed CARLA map during inference.
+5. Reject overlapping sessions, validate weights before simulator startup,
+   clean up owned processes, run offline regressions and bounded live trials.
+
+The pre-change source is preserved by Git HEAD; the working tree was clean.
+The existing Finish R1 backup and datasets are untouched.
+
 ## Controls
 
 `run_car.cmd`: click the CARLA window. W/S or Up/Down accelerate/brake,
@@ -49,3 +64,8 @@ Offline verification: all 159 regression tests passed after the simulator
 closed. Every activation in the saved live neural snapshot matched a fresh
 forward pass through the existing weights exactly. PowerShell parsing passed,
 and no CARLA or driving-client processes remained after the bounded trials.
+
+Live outputs are in `logs/scenic-20260919-162905-driving.log`, the September 19
+practice cockpit log, `logs/practice-map.png` and
+`logs/two-modes-live-neural.json`. Desktop automation was stopped when the
+physical Escape key was pressed; no further desktop input was sent.

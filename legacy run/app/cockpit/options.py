@@ -28,12 +28,29 @@ def parse_args(argv=None):
                         help="Read JSON actions from stdin while showing the driving window")
     parser.add_argument("--screenshot-path", default=None,
                         help="Save one fully rendered cockpit frame for visual verification")
-    parser.add_argument("--camera-profile", choices=("parking", "safe", "map"), default="parking",
-                        help="map=no scene rendering; parking=four cameras; safe=front camera")
+    parser.add_argument("--camera-profile", choices=("parking", "triple", "safe", "map"), default="parking",
+                        help="map=map cockpit; parking=four cameras; triple=front and side cameras; safe=front camera")
+    parser.add_argument("--carla-window-pids", nargs="*", type=int, default=[],
+                        help="Owned CARLA process IDs allowed to receive focused viewport driving keys")
+    parser.add_argument("--scripted-keys", default=None,
+                        help="Diagnostic: JSON file of [start_s, end_s, [keys]] replayed as driving "
+                             "keys in-process (no desktop input; does not test window focus)")
+    parser.add_argument("--route-ahead-m", type=float, default=0.0,
+                        help="Diagnostic: start a neural route to the point this many metres ahead "
+                             "along the spawn lane (alternative to --route-destination)")
+    parser.add_argument("--diagnostic-displace", nargs=2, type=float, metavar=("LATERAL_M", "YAW_DEG"),
+                        default=None,
+                        help="Diagnostic: after a --route-destination is planned, move the car sideways "
+                             "and turn it, to exercise stuck-car recovery")
+    parser.add_argument("--diagnostic-yaw-offset", type=float, default=0.0,
+                        help="Diagnostic: rotate the spawned car by this many degrees before a "
+                             "--route-destination is planned, to exercise start alignment")
     parser.add_argument("--low-scenery", action="store_true",
                         help="Keep a clear, dry daytime scene and omit optional optimized-map effects")
     parser.add_argument("--presentation", action="store_true",
                         help="Full scenery with a larger forward camera and paced simulation")
+    parser.add_argument("--full-graphics", action="store_true",
+                        help="Epic scenery and wind with the existing neural cockpit")
     parser.add_argument("--runtime-rpc-timeout", type=float, default=2.0,
                         help="Fail quickly if the CARLA server disappears")
     parser.add_argument("--graphics-throttle-start-kmh", type=float, default=135.0,
@@ -70,6 +87,10 @@ def parse_args(argv=None):
             parser.error(f"--{name.replace(chr(95), chr(45))} must be finite")
     if args.presentation and (args.low_scenery or args.camera_profile == "map"):
         parser.error("presentation requires camera rendering without low-scenery mode")
+    if args.full_graphics and args.low_scenery:
+        parser.error("full graphics and low scenery cannot be combined")
+    if args.full_graphics and args.presentation:
+        parser.error("full graphics and presentation cannot be combined")
     if args.camera_profile == "map" or args.low_scenery or args.presentation:
         args.target_fps = min(args.target_fps, 20)
     if args.window_width < 800 or args.window_height < 450:
@@ -92,6 +113,14 @@ def parse_args(argv=None):
         parser.error("visual austerity start must be above its non-negative resume speed")
     if args.route_speed_kmh <= 0 or args.route_speed_kmh > args.graphics_speed_cap_kmh:
         parser.error("--route-speed-kmh must be positive and no higher than the speed cap")
+    if args.diagnostic_displace is not None and (
+            not all(math.isfinite(v) for v in args.diagnostic_displace) or
+            abs(args.diagnostic_displace[0]) > 30 or abs(args.diagnostic_displace[1]) > 360):
+        parser.error("--diagnostic-displace needs finite values within 30 m and 360 degrees")
+    if args.route_ahead_m < 0 or args.route_ahead_m > 2000:
+        parser.error("--route-ahead-m must be between 0 and 2000")
+    if args.route_ahead_m and args.route_destination:
+        parser.error("--route-ahead-m and --route-destination are alternatives")
     if args.human_target_episodes <= 0:
         parser.error("--human-target-episodes must be positive")
     return args

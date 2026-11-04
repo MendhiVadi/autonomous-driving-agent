@@ -1,4 +1,4 @@
-"""Regression tests for control validation and runtime ownership."""
+"""Behavioral regressions for unsafe boundaries found during Finish R1 review."""
 import io
 import math
 from pathlib import Path

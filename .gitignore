@@ -19,18 +19,7 @@ runs/
 credentials/
 handoff/
 cache/
-
-# Local models, credentials and simulator environments
-nn_policy*.json
-*.pem
-*.key
-*.pfx
-*.p12
-*.zip
-*.log
-carla_env/
-CARLA_*/
-.agents/
-AGENTS.md
-FINISH_R1.json
-*.local.json
+transfer/
+transfer-setup.log
+transfer-diagnostics.log
+**/.obsidian/workspace*.json

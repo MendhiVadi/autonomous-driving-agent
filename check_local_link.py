@@ -19,16 +19,16 @@ ROOT = Path(__file__).resolve().parent
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--tls', action='store_true', help='Use paired certificates/token without changing network settings')
-    parser.add_argument('--client-root', type=Path, default=ROOT / 'secondary laptop', help='Optional independently extracted client folder')
+    parser.add_argument('--client-root', type=Path, default=ROOT / 'laptop 2', help='Optional independently extracted client folder')
     args = parser.parse_args()
     environment = dict(os.environ, SIM_GATEWAY_TOKEN=secrets.token_urlsafe(32))
     # Deliberately contaminate PYTHONPATH: -I must ignore it in each process.
     environment["PYTHONPATH"] = str(ROOT / "legacy run" / "app")
     with tempfile.TemporaryFile(mode="w+b") as host_log:
         process = subprocess.Popen(
-            [sys.executable, "-I", "-B", str(ROOT / "primary laptop" / "gateway.py"),
+            [sys.executable, "-I", "-B", str(ROOT / "laptop 1" / "gateway.py"),
              "--port", "0", "--max-runtime-seconds", "25"] + (["--tls"] if args.tls else []),
-            cwd=ROOT / "primary laptop", env=environment, stdout=host_log, stderr=subprocess.STDOUT,
+            cwd=ROOT / "laptop 1", env=environment, stdout=host_log, stderr=subprocess.STDOUT,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         try:
             deadline = time.monotonic() + 8
