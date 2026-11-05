@@ -33,7 +33,7 @@ cells.append(nbf.v4.new_markdown_cell(
     f"# CARLA state-policy training\n\n"
     f"Train the project's **{' → '.join(map(str, POLICY_SIZES))}** driving policy from "
     "route-separated CARLA expert demonstrations. The notebook exports JSON weights that "
-    "`neural_drive_agent.py` can load directly.\n\n"
+    "the neural cockpit can load directly.\n\n"
     f"Policy contract version: `{POLICY_CONTRACT_VERSION}` (generated from `policy_contract.py`)."
 ))
 cells.append(nbf.v4.new_markdown_cell(
@@ -100,7 +100,7 @@ cells.append(nbf.v4.new_markdown_cell("## Steps"))
 cells.append(nbf.v4.new_markdown_cell(
     "### 1. Normalize the eight live-policy inputs\n\n"
     "`clamp`/`normalize_features` below are generated verbatim from `policy_contract.py` "
-    "(the single source of truth shared with `neural_drive_agent.py`) so this notebook "
+    "(the single source of truth shared with the live cockpit) so this notebook "
     "cannot silently drift from the deployed policy's input contract."
 ))
 cells.append(nbf.v4.new_code_cell(
@@ -335,9 +335,9 @@ cells.append(nbf.v4.new_markdown_cell(
 cells.append(nbf.v4.new_markdown_cell(
     "## Next steps\n\n"
     "1. Download `nn_policy_colab.json`.\n"
-    "2. Keep the existing `nn_policy.json` as a rollback copy.\n"
-    "3. Run the candidate on unseen CARLA routes with `--record-dir`.\n"
-    "4. Compare collisions, lane departures, completion, and safety interventions.\n"
+    "2. Copy it to the repository root next to `run_neural.cmd`; the launcher prefers it over the bundled `nn_policy_bootstrap.json`.\n"
+    "3. Commit it so a reinstalled machine keeps the trained model.\n"
+    "4. Drive unseen routes with `run_neural.cmd` and compare collisions, lane departures, completion and safety interventions.\n"
     "5. Promote the candidate only after closed-loop acceptance."
 ))
 

@@ -1,11 +1,16 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-call "%~dp0scripts\environment.cmd"
-if errorlevel 1 exit /b 1
-echo Lightweight neural driving. M opens the destination map; click a road. Driving keys take over.
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\run_practice.ps1" -CarlaRoot "%CARLA_ROOT%" -Mode practice -CameraProfile map -RequireFreshServer -OpenMap %*
+echo ============================================================
+echo  Neural driving - small map (Town02_Opt), three-camera cockpit
+echo  The destination map opens first: click a road and the network
+echo  drives there. M reopens the map, F8 opens the network activity
+echo  page, any driving key (W/A/S/D, arrows, Space) takes over,
+echo  Backspace resets the car, Esc exits.
+echo  Slow PC?  run_neural.cmd -Lightweight   (map cockpit, no cameras)
+echo ============================================================
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\launch.ps1" -Mode neural %*
 set "SESSION_EXIT=%ERRORLEVEL%"
-if not "%SESSION_EXIT%"=="0" echo Neural driving stopped. See the latest practice logs in logs.
+if not "%SESSION_EXIT%"=="0" echo Neural driving stopped with an error. See the newest files in the logs folder.
 pause
 exit /b %SESSION_EXIT%
