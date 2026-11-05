@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from runtime.watchdog import CommandWatchdog, LinkWatchdog
-from scenic_drive import steering_step
+from manual_drive import steering_step
 
 
 class RuntimeEdgeTests(unittest.TestCase):

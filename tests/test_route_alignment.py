@@ -1,4 +1,5 @@
 """Stationary route-start alignment maths, without a simulator."""
+import importlib.util
 import sys
 import unittest
 from pathlib import Path
@@ -82,6 +83,12 @@ class DiagnosticOptionTests(unittest.TestCase):
 
 
 
+def real_carla_available():
+    spec = importlib.util.find_spec('carla')
+    return spec is not None and 'stubs' not in str(spec.origin or '')
+
+
+@unittest.skipUnless(real_carla_available(), 'needs the real carla package')
 class CarlaApiUsageTests(unittest.TestCase):
     """The cockpit once called vehicle.set_velocity, which CARLA 0.9.16 does not have."""
 

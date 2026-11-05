@@ -1,7 +1,7 @@
 """Collect CARLA BasicAgent demonstrations for Colab imitation learning.
 
 Each route is written to a separate JSONL episode. The observation layout is
-identical to neural_drive_agent.py and the action is the rule-based expert's
+identical to the neural cockpit's and the action is the rule-based expert's
 steering, accelerator, and brake command. This script collects labels only; it
 does not train or overwrite a policy.
 """

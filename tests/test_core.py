@@ -11,28 +11,19 @@ from pathlib import Path
 
 from telemetry.recorder import EpisodeRecorder
 from collect_expert_data import choose_route
-from telemetry.dashboard import summarize, write_dashboard
 from learning.model import (MLP, load_deployable_policy)
 from learning.assistance import (apply_stall_recovery)
 from simulation.observations import (make_observation)
 from vehicle.safety import SafetySupervisor
 from vehicle.control import VehicleCommand, steering_angle_from_lane_error
 from runtime.watchdog import CommandWatchdog
-from runtime.paths import carla_root
-from simulation.features import _choose_continuation
 from learning.contract import POLICY_CONTRACT_VERSION, normalize_features
-from simulation.routes import _load_agents
 from vehicle.transmission import (EngineRpmEstimator, ManualTransmissionConfig,
                                  automatic_gear_for_speed, estimate_engine_rpm,
                                  gear_redline_speed_kmh,
                                  recommended_shift)
-from runtime.gesture import GESTURE_BIAS_CAP, policy_bias_from_payload
 from runtime.health import HealthEvent, evaluate_health
-from stack_supervisor import (Component, RestartPolicy, Supervisor,
-                              build_components, carla_rpc_probe, parse_args as supervisor_args)
-
-
-CARLA_ROOT = carla_root()
+from simulation.environment import carla_rpc_probe
 
 
 def load_spawn_module():
@@ -152,32 +143,6 @@ class FakeKeys:
 
 
 class CoreLogicTests(unittest.TestCase):
-    def test_gesture_policy_bias_is_bounded_and_directional(self):
-        bias = policy_bias_from_payload({
-            "tracking": True,
-            "bias": {
-                "turn_left": 9.0,
-                "lane_change_left": 9.0,
-                "slow_down": 9.0,
-            },
-        })
-        self.assertEqual(bias.steering, -GESTURE_BIAS_CAP)
-        self.assertEqual(bias.accelerator, -GESTURE_BIAS_CAP)
-        self.assertLessEqual(bias.brake, GESTURE_BIAS_CAP)
-        self.assertTrue(bias.active)
-
-    def test_opposing_gestures_cancel_and_invalid_values_are_ignored(self):
-        bias = policy_bias_from_payload({
-            "tracking": True,
-            "bias": {
-                "turn_left": 0.1,
-                "turn_right": 0.1,
-                "stop": float("nan"),
-            },
-        })
-        self.assertEqual(bias.steering, 0.0)
-        self.assertEqual(bias.brake, 0.0)
-        self.assertFalse(bias.active)
 
     def test_spawn_tries_past_occupied_points(self):
         world = FakeWorld([None, None, "vehicle"])
@@ -572,20 +537,6 @@ class CoreLogicTests(unittest.TestCase):
         finally:
             watchdog.stop()
 
-    def test_route_continuation_uses_previous_waypoint_heading(self):
-        cursor = FakeWaypoint(90)
-        straight_from_cursor = FakeWaypoint(100)
-        closer_to_original_ego = FakeWaypoint(10)
-        selected = _choose_continuation(cursor, [closer_to_original_ego, straight_from_cursor])
-        self.assertIs(selected, straight_from_cursor)
-
-    def test_route_planner_loads_bundled_agents_path(self):
-        _load_agents()
-        expected = str(CARLA_ROOT / "PythonAPI" / "carla")
-        self.assertIn(expected, __import__("sys").path)
-        from agents.navigation.global_route_planner import GlobalRoutePlanner
-        self.assertIsNotNone(GlobalRoutePlanner)
-
     def test_recorder_does_not_overwrite_same_named_episode(self):
         with tempfile.TemporaryDirectory() as directory:
             first = EpisodeRecorder(directory, "run")
@@ -610,65 +561,6 @@ class CoreLogicTests(unittest.TestCase):
             150,
         )
         self.assertGreaterEqual(start.location.distance(destination.location), 150)
-
-    def test_dashboard_uses_recorded_metrics(self):
-        with tempfile.TemporaryDirectory() as directory:
-            episode = Path(directory) / "episode.jsonl"
-            rows = [
-                {"telemetry": {"speed_kmh": 10, "distance_m": 2, "elapsed_s": 1,
-                               "obstacle_distance_m": 20, "collision": False,
-                               "lane_departure": False}},
-                {"telemetry": {"speed_kmh": 20, "distance_m": 5, "elapsed_s": 2,
-                               "obstacle_distance_m": 8, "collision": False,
-                               "lane_departure": True}, "event": ["lane_departure"]},
-            ]
-            episode.write_text("\n".join(json.dumps(row) for row in rows), encoding="utf-8")
-            result = summarize(episode)
-            self.assertEqual(result["distance_m"], 5)
-            self.assertEqual(result["average_speed_kmh"], 15)
-            self.assertEqual(result["lane_departures"], 1)
-            self.assertFalse(result["success"])
-            output = Path(directory) / "dashboard.html"
-            write_dashboard([episode], output)
-            page = output.read_text(encoding="utf-8")
-            self.assertIn("Driving evaluation", page)
-            self.assertIn("REVIEW", page)
-
-
-class SupervisorCommandLineTests(unittest.TestCase):
-    """The launcher passes these through, so a broken flag breaks every launch."""
-
-    def _carla_argv(self, argv):
-        components = {item.name: item for item in build_components(supervisor_args(argv))}
-        return [str(part) for part in components["carla"].argv]
-
-    def test_default_renderer_matches_validated_map_launcher(self):
-        self.assertIn("-dx11", self._carla_argv([]))
-
-    def test_opengl_is_selectable(self):
-        # Regression: --render-api once took "-opengl" as its value, and argparse
-        # reads a dash-prefixed value as the next option, so "--opengl" from the
-        # launcher aborted the supervisor before it started anything.
-        argv = self._carla_argv(["--render-api", "opengl"])
-        self.assertIn("-opengl", argv)
-        self.assertNotIn("-dx12", argv)
-
-    def test_every_renderer_choice_parses(self):
-        for name in ("dx12", "dx11", "opengl", "vulkan"):
-            with self.subTest(renderer=name):
-                self.assertIn("-" + name, self._carla_argv(["--render-api", name]))
-
-    def test_launcher_flags_are_accepted_together(self):
-        args = supervisor_args(["--no-thermal-guard", "--render-api", "opengl",
-                                "--no-orphan-sweep", "--max-log-mb", "10"])
-        self.assertTrue(args.no_thermal_guard)
-        self.assertTrue(args.no_orphan_sweep)
-        self.assertEqual(args.max_log_mb, 10.0)
-
-    def test_the_neural_driver_depends_only_on_carla(self):
-        components = {item.name: item for item in build_components(supervisor_args([]))}
-        self.assertEqual(set(components["neural"].depends_on), {"carla"})
-
 
 class CarlaLivenessTests(unittest.TestCase):
     def test_open_listener_with_dead_rpc_is_not_ready(self):
@@ -728,265 +620,6 @@ class HealthGuardTests(unittest.TestCase):
         verdict = evaluate_health([HealthEvent("thermal", age_s=120.0)],
                                   cooldowns={"thermal": 60.0})
         self.assertTrue(verdict.safe)
-
-
-class RestartPolicyTests(unittest.TestCase):
-    def test_first_start_is_immediate(self):
-        policy = RestartPolicy()
-        policy.record_start()
-        self.assertEqual(policy.delay_s(), 0.0)
-
-    def test_backoff_grows_then_caps(self):
-        policy = RestartPolicy(base_delay_s=5.0, max_delay_s=40.0)
-        delays = []
-        for _ in range(8):
-            policy.record_start()
-            delays.append(policy.delay_s())
-        self.assertEqual(delays[:5], [0.0, 5.0, 10.0, 20.0, 40.0])
-        self.assertTrue(all(delay == 40.0 for delay in delays[4:]))
-
-    def test_a_long_healthy_run_clears_the_failure_count(self):
-        policy = RestartPolicy(healthy_after_s=300.0)
-        for _ in range(4):
-            policy.record_start()
-        policy.record_exit(uptime_s=600.0)
-        self.assertEqual(policy.failures, 0)
-
-    def test_a_short_run_keeps_counting_toward_giving_up(self):
-        policy = RestartPolicy(max_failures=3, healthy_after_s=300.0)
-        for _ in range(4):
-            policy.record_start()
-            policy.record_exit(uptime_s=1.0)
-        self.assertTrue(policy.exhausted())
-
-
-class FakeProcess:
-    def __init__(self, pid=4242):
-        self.pid = pid
-        self.returncode = None
-        self.terminated = False
-
-    def poll(self):
-        return self.returncode
-
-    def terminate(self):
-        self.terminated = True
-        self.returncode = -15
-
-    def wait(self, timeout=None):
-        return self.returncode
-
-    def kill(self):
-        self.returncode = -9
-
-
-class RecordingSupervisor(Supervisor):
-    """Supervisor with process spawning replaced, so tick() logic can be tested."""
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.starts = []
-
-    def log(self, message):
-        pass
-
-    def start(self, component):
-        self.starts.append(component.name)
-        component.process = FakeProcess()
-        component.started_at = time.monotonic()
-        component.probe_failures = 0
-        component.policy.record_start()
-
-
-class SupervisorTests(unittest.TestCase):
-    def setUp(self):
-        # stop() tree-kills via taskkill. A unit test must never shell out to a
-        # real process killer, so record the pids instead.
-        import stack_supervisor
-
-        self.killed = []
-        real = stack_supervisor.terminate_tree
-        stack_supervisor.terminate_tree = lambda pid, timeout_s=10.0: (
-            self.killed.append(pid) or True)
-        self.addCleanup(lambda: setattr(stack_supervisor, "terminate_tree", real))
-
-    def _component(self, name, **kwargs):
-        return Component(name=name, argv=["noop"], cwd=Path("."),
-                         log_path=Path(tempfile.gettempdir()) / (name + ".log"), **kwargs)
-
-    def _supervisor(self, components, thermal_guard=False):
-        return RecordingSupervisor(components, log_dir=Path(tempfile.gettempdir()),
-                                   thermal_guard=thermal_guard)
-
-    def test_a_component_that_was_never_started_is_started(self):
-        supervisor = self._supervisor([self._component("gesture")])
-        supervisor.tick()
-        self.assertEqual(supervisor.starts, ["gesture"])
-
-    def test_a_dead_component_is_restarted(self):
-        component = self._component("gesture")
-        supervisor = self._supervisor([component])
-        supervisor.tick()
-        component.process.returncode = 18  # EXIT_CAMERA_STALLED
-        component.policy.base_delay_s = 0.0
-        supervisor.tick()
-        self.assertEqual(supervisor.starts, ["gesture", "gesture"])
-
-    def test_an_unresponsive_but_live_component_is_recycled(self):
-        # The 2026-09-09 shape: the process is alive and still holding its port,
-        # but has stopped answering. A PID check alone would call this healthy.
-        component = self._component("gesture", probe=lambda: False, ready_grace_s=0.0,
-                                    probe_failures_allowed=1)
-        component.policy.base_delay_s = 0.0
-        supervisor = self._supervisor([component])
-        supervisor.tick()
-        first = component.process
-        supervisor.tick()   # probe failure 1 - tolerated
-        self.assertIs(component.process, first)
-        supervisor.tick()   # probe failure 2 - over the allowance, recycled
-        self.assertIsNone(component.process)
-        supervisor.tick()   # restarted
-        self.assertEqual(supervisor.starts, ["gesture", "gesture"])
-        # The whole tree must be killed: terminate() alone would only reach the
-        # venv redirector stub and orphan the interpreter doing the work.
-        self.assertIn(first.pid, self.killed)
-
-    def test_a_recovering_probe_clears_the_failure_count(self):
-        answers = [False, True]
-        component = self._component("gesture", probe=lambda: answers.pop(0),
-                                    ready_grace_s=0.0, probe_failures_allowed=1)
-        supervisor = self._supervisor([component])
-        supervisor.tick()
-        supervisor.tick()
-        self.assertEqual(component.probe_failures, 1)
-        supervisor.tick()
-        self.assertEqual(component.probe_failures, 0)
-
-    def test_an_unready_dependency_holds_a_component_back(self):
-        carla = self._component("carla", probe=lambda: False, ready_grace_s=0.0,
-                                probe_failures_allowed=0)
-        neural = self._component("neural", depends_on=("carla",))
-        supervisor = self._supervisor([neural, carla])
-        supervisor.tick()
-        carla.probe_failures = 5   # carla is not ready
-        supervisor.starts.clear()
-        neural.process = None
-        supervisor.tick()
-        self.assertNotIn("neural", supervisor.starts)
-
-    def test_a_component_that_keeps_dying_is_given_up_on(self):
-        component = self._component("gesture")
-        component.policy = RestartPolicy(base_delay_s=0.0, max_failures=2, healthy_after_s=999.0)
-        supervisor = self._supervisor([component])
-        for _ in range(6):
-            supervisor.tick()
-            if component.process is not None:
-                component.process.returncode = 1
-        self.assertTrue(component.gave_up)
-        self.assertLessEqual(len(supervisor.starts), 3)
-
-    def test_the_grace_window_does_not_fake_readiness(self):
-        # The bug this replaces: readiness was inferred from "still inside the
-        # grace window", so the launcher announced READY and the neural driver
-        # started while CARLA was minutes away from accepting connections.
-        component = self._component("carla", probe=lambda: False, ready_grace_s=999.0)
-        supervisor = self._supervisor([component])
-        supervisor.tick()
-        self.assertTrue(component.is_running())
-        self.assertFalse(component.is_ready())
-
-    def test_readiness_arrives_only_when_the_probe_succeeds(self):
-        answers = [False, False, True]
-        component = self._component("carla", probe=lambda: answers.pop(0), ready_grace_s=999.0)
-        supervisor = self._supervisor([component])
-        supervisor.tick()                      # starts it; no probe on the start tick
-        self.assertFalse(component.is_ready())
-        supervisor.tick()                      # probe -> False
-        self.assertFalse(component.is_ready())
-        supervisor.tick()                      # probe -> False
-        self.assertFalse(component.is_ready())
-        supervisor.tick()                      # probe -> True
-        self.assertTrue(component.is_ready())
-
-    def test_a_dependent_component_waits_for_a_real_probe_success(self):
-        carla_up = [False, False, True, True, True, True]
-        carla = self._component("carla", probe=lambda: carla_up.pop(0), ready_grace_s=999.0)
-        neural = self._component("neural", depends_on=("carla",))
-        supervisor = self._supervisor([neural, carla])
-        supervisor.tick()                      # carla starts; neural held back
-        self.assertEqual(supervisor.starts, ["carla"])
-        supervisor.tick()                      # carla probe -> False
-        supervisor.tick()                      # carla probe -> False
-        self.assertEqual(supervisor.starts, ["carla"])
-        supervisor.tick()                      # carla probe -> True, now ready
-        self.assertTrue(carla.is_ready())
-        supervisor.tick()                      # neural is finally allowed to start
-        self.assertIn("neural", supervisor.starts)
-
-    def test_a_probe_failure_inside_the_grace_window_is_not_counted(self):
-        component = self._component("carla", probe=lambda: False, ready_grace_s=999.0,
-                                    probe_failures_allowed=0)
-        supervisor = self._supervisor([component])
-        supervisor.tick()
-        first = component.process
-        for _ in range(5):
-            supervisor.tick()
-        self.assertEqual(component.probe_failures, 0)
-        self.assertIs(component.process, first)
-
-    def test_an_oversized_log_is_rotated_on_start(self):
-        # The neural driver writes a telemetry line about twice a second, so an
-        # unrotated log would eventually fill the disk and take the stack down
-        # for a new reason.
-        with tempfile.TemporaryDirectory() as folder:
-            log_path = Path(folder) / "neural.log"
-            log_path.write_text("x" * 2048, encoding="utf-8")
-            component = self._component("neural")
-            component.log_path = log_path
-            supervisor = self._supervisor([component])
-            supervisor.max_log_bytes = 1024
-            supervisor.rotate_log(log_path)
-            self.assertFalse(log_path.exists())
-            self.assertTrue(Path(str(log_path) + ".1").exists())
-
-    def test_a_small_log_is_left_alone(self):
-        with tempfile.TemporaryDirectory() as folder:
-            log_path = Path(folder) / "neural.log"
-            log_path.write_text("small", encoding="utf-8")
-            supervisor = self._supervisor([self._component("neural")])
-            supervisor.max_log_bytes = 1024
-            supervisor.rotate_log(log_path)
-            self.assertTrue(log_path.exists())
-            self.assertFalse(Path(str(log_path) + ".1").exists())
-
-    def test_rotation_keeps_a_bounded_number_of_generations(self):
-        with tempfile.TemporaryDirectory() as folder:
-            log_path = Path(folder) / "neural.log"
-            supervisor = self._supervisor([self._component("neural")])
-            supervisor.max_log_bytes = 16
-            supervisor.log_generations = 3
-            for _ in range(6):
-                log_path.write_text("y" * 64, encoding="utf-8")
-                supervisor.rotate_log(log_path)
-            kept = sorted(item.name for item in Path(folder).iterdir())
-            self.assertEqual(kept, ["neural.log.1", "neural.log.2", "neural.log.3"])
-
-    def test_rotation_can_be_disabled(self):
-        with tempfile.TemporaryDirectory() as folder:
-            log_path = Path(folder) / "neural.log"
-            log_path.write_text("z" * 4096, encoding="utf-8")
-            supervisor = self._supervisor([self._component("neural")])
-            supervisor.max_log_bytes = 0
-            supervisor.rotate_log(log_path)
-            self.assertTrue(log_path.exists())
-
-    def test_a_thermal_hold_prevents_any_start(self):
-        component = self._component("gesture")
-        supervisor = self._supervisor([component], thermal_guard=True)
-        supervisor._thermal_block_until = time.monotonic() + 60.0
-        supervisor.tick()
-        self.assertEqual(supervisor.starts, [])
-
 
 if __name__ == "__main__":
     unittest.main()

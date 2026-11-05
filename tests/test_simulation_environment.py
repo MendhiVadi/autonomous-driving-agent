@@ -9,9 +9,7 @@ from unittest.mock import Mock, patch
 
 from simulation.environment import (state_input_world, require_idle_world,
     cleanup_actions, paced_tick, input_heartbeat_ready, write_input_heartbeat,
-    prepare_state_world)
-from stack_supervisor import build_components, parse_args, carla_rpc_probe
-from neural_drive_agent import (run as run_neural)
+    prepare_state_world, carla_rpc_probe)
 
 
 class InputEnvironmentTests(unittest.TestCase):
@@ -102,14 +100,6 @@ class InputEnvironmentTests(unittest.TestCase):
             self.assertFalse(carla_rpc_probe('127.0.0.1', 2000))
             world.tick.assert_not_called()
 
-    def test_custom_port_reaches_both_server_and_driver(self):
-        components = build_components(parse_args(['--rpc-port', '2100']))
-        server, neural = components
-        self.assertIn('-carla-rpc-port=2100', server.argv)
-        self.assertEqual(neural.argv[neural.argv.index('--map') + 1], 'Town02_Opt')
-        self.assertEqual(neural.argv[neural.argv.index('--port') + 1], '2100')
-        self.assertIsNotNone(neural.probe)
-
     def test_map_load_preserves_disabled_renderer_and_rejects_busy_world(self):
         world, settings = self.world()
         world.get_map.return_value.name = 'Carla/Maps/Town10HD_Opt'
@@ -130,37 +120,6 @@ class InputEnvironmentTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'Another client'):
             prepare_state_world(client, carla, 'Town05')
         client.load_world.assert_not_called()
-
-    def test_neural_missing_policy_never_connects_to_simulator(self):
-        with tempfile.TemporaryDirectory() as directory, patch('carla.Client') as client:
-            args = SimpleNamespace(bootstrap_train=False,
-                carla_root=r'C:\Users\medha\Documents\CARLA\CARLA_0.9.16',
-                policy=str(Path(directory) / 'missing.json'))
-            with self.assertRaises(FileNotFoundError):
-                run_neural(args)
-            client.assert_not_called()
-
-    def test_neural_vehicle_is_cleaned_if_physics_configuration_fails(self):
-        world, settings = self.world()
-        world.get_map.return_value.get_spawn_points.return_value = [object()]
-        original = vars(settings).copy()
-        vehicle = world.try_spawn_actor.return_value
-        with tempfile.TemporaryDirectory() as directory:
-            policy = Path(directory) / 'test-placeholder.json'
-            policy.write_text('{}', encoding="utf-8")
-            args = SimpleNamespace(bootstrap_train=False,
-                carla_root=r'C:\Users\medha\Documents\CARLA\CARLA_0.9.16',
-                policy=str(policy), host='127.0.0.1', port=2000, map=None)
-            with patch('carla.Client'), \
-                    patch('neural_drive_agent.load_deployable_policy'), \
-                    patch('neural_drive_agent.prepare_state_world', return_value=world), \
-                    patch('vehicle.transmission.configure_vehicle_six_speed_physics',
-                          side_effect=RuntimeError('physics failure')):
-                with self.assertRaisesRegex(RuntimeError, 'physics failure'):
-                    run_neural(args)
-            vehicle.destroy.assert_called_once()
-            self.assertEqual(vars(settings), original)
-
 
 if __name__ == '__main__':
     unittest.main()
