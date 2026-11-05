@@ -50,7 +50,11 @@ class NeuralVisualizer:
         self.browser_seen = False
         self.model = {"sizes": model.sizes, "weights": model.weights,
                       "name": Path(path).name}
+        # The page fetches the weights once from /model; /state carries only the
+        # identity, so ten polls a second do not re-send and re-parse ~15 KB.
         self.model_json = json.dumps(self.model, allow_nan=False).encode()
+        self.model_summary_json = json.dumps({"sizes": model.sizes, "name": self.model["name"]},
+                                             allow_nan=False).encode()
         self.page = Path(__file__).with_name("neural_visualizer.html").read_bytes()
         owner = self
 
@@ -65,6 +69,8 @@ class NeuralVisualizer:
                     return
                 if self.path == "/":
                     body, kind = owner.page, "text/html; charset=utf-8"
+                elif self.path == "/model":
+                    body, kind = owner.model_json, "application/json"
                 elif self.path == "/state":
                     with owner.lock:
                         snapshot = owner.latest
@@ -74,7 +80,7 @@ class NeuralVisualizer:
                         print('[neural visual] browser connected', flush=True)
                     live = json.dumps({"sample": snapshot, "runtime": runtime,
                                        "now": time.time()}, allow_nan=False).encode()
-                    body = b'{"model":' + owner.model_json + b"," + live[1:]
+                    body = b'{"model":' + owner.model_summary_json + b"," + live[1:]
                     kind = "application/json"
                 else:
                     self.send_error(404)

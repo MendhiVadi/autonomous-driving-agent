@@ -81,6 +81,7 @@ Every command passes extra options to `scripts\launch.ps1`:
 | `-NoLaneAssist` | Raw network steering without the bounded lane correction |
 | `-SpawnIndex 7` | Fixed spawn point instead of a random one |
 | `-IgnoreHardwareCooldown` | Skip the thermal/hardware-fault cooldown check |
+| `-StartupTimeoutSeconds 900` | How long to wait for CARLA to boot (default 420 s; the first start after an install is slowest) |
 
 Example: `run_neural.cmd -Lightweight -MaxRuntimeSeconds 120`.
 

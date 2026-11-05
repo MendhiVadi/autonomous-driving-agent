@@ -28,6 +28,7 @@ param(
     [switch]$Lightweight,
     [double]$MaxRuntimeSeconds = 0,
     [int]$SpawnIndex = -1,
+    [ValidateRange(60, 900)][int]$StartupTimeoutSeconds = 420,
     [switch]$IgnoreHardwareCooldown,
     # neural mode
     [string]$RoutePolicy = '',
@@ -108,7 +109,7 @@ try {
     $displayFps = if ($cameraCockpit) { 15 } else { 20 }
     $frontCameraFps = if ($largeMap) { 8 } else { 15 }
     $mirrorCameraFps = if ($largeMap) { 3 } else { 5 }
-    $rpcTimeout = if ($largeMap) { 20 } elseif ($cameraCockpit) { 10 } else { 2 }
+    $rpcTimeout = if ($largeMap) { 20 } elseif ($cameraCockpit) { 10 } else { 5 }
 
     $routeArguments = @()
     if ($Mode -eq 'neural') {
@@ -171,14 +172,16 @@ try {
             $_.Name -in @('CarlaUE4.exe', 'CarlaUE4-Win64-Shipping.exe')
         })
     }
-    function Test-CarlaReady {
-        # A connection timeout is normal while UE4 is still loading. With the script-wide
-        # Stop policy, PowerShell would otherwise promote Python's expected stderr into a
+    function Wait-CarlaReady([int]$Seconds) {
+        # One Python process polls for up to $Seconds instead of a new process (and a
+        # CARLA client import) every few seconds while Unreal is still booting. A
+        # connection timeout is normal meanwhile; with the script-wide Stop policy,
+        # PowerShell would otherwise promote Python's expected stderr into a
         # terminating error and abort the launcher.
         $previousPreference = $ErrorActionPreference
         try {
             $ErrorActionPreference = 'Continue'
-            & $python -I -B -c "import sys; sys.path.insert(0,sys.argv[1]); from simulation.environment import carla_rpc_probe; sys.exit(0 if carla_rpc_probe('127.0.0.1',2000) else 1)" (Join-Path $appRoot 'app') 2>$null
+            & $python -I -B -c "import sys; sys.path.insert(0,sys.argv[1]); from simulation.environment import wait_for_carla; sys.exit(0 if wait_for_carla(seconds=float(sys.argv[2])) else 1)" (Join-Path $appRoot 'app') $Seconds 2>$null
             return $LASTEXITCODE -eq 0
         } catch { return $false } finally { $ErrorActionPreference = $previousPreference }
     }
@@ -235,8 +238,8 @@ try {
         $windowStyle = 'Normal'
     }
     elseif ($cameraCockpit) {
-        # Offscreen Epic server; the pygame cockpit is the only window.
-        $serverArguments = @('-RenderOffScreen', "-$RenderApi", '-quality-level=Epic', '-NoVSync',
+        # Offscreen Epic server; the pygame cockpit is the only window, so no audio either.
+        $serverArguments = @('-RenderOffScreen', "-$RenderApi", '-quality-level=Epic', '-NoVSync', '-nosound',
                              "-ResX=$displayWidth", "-ResY=$displayHeight", "-fps=$displayFps", '-unattended',
                              '-carla-rpc-port=2000', "-ExecCmds=`"t.MaxFPS $displayFps`"")
         $windowStyle = 'Hidden'
@@ -254,11 +257,17 @@ try {
         -RedirectStandardOutput (Join-Path $logDir "$runName-server.log") `
         -RedirectStandardError (Join-Path $logDir "$runName-server.error.log")
     try {
-        Write-Host 'Waiting for the CARLA world to finish loading...'
-        $deadline = (Get-Date).AddSeconds(180)
+        Write-Host "Waiting for the CARLA world to finish loading (up to $StartupTimeoutSeconds s; the first start after an install is the slowest)..."
+        $startedWaiting = Get-Date
+        $deadline = $startedWaiting.AddSeconds($StartupTimeoutSeconds)
+        $nextProgress = $startedWaiting.AddSeconds(30)
         $ready = $false
         $missingProcessChecks = 0
         while ((Get-Date) -lt $deadline) {
+            if ((Get-Date) -ge $nextProgress) {
+                Write-Host ("  still loading after {0:N0} s" -f ((Get-Date) - $startedWaiting).TotalSeconds)
+                $nextProgress = (Get-Date).AddSeconds(30)
+            }
             Remember-OwnedCarlaChildren
             if (-not (Test-CarlaStartupAlive -OwnedProcess $ownedServerProcess -FindProcesses { Get-CarlaProcesses })) {
                 $missingProcessChecks++
@@ -269,10 +278,10 @@ try {
                 throw "CARLA stopped before the world became ready. $detail Details: $failurePath"
             }
             $missingProcessChecks = 0
-            if (Test-CarlaReady) { $ready = $true; break }
-            Start-Sleep -Seconds 3
+            $budget = [Math]::Max(2, [Math]::Min(15, [int]($deadline - (Get-Date)).TotalSeconds))
+            if (Wait-CarlaReady -Seconds $budget) { $ready = $true; break }
         }
-        if (-not $ready) { throw "CARLA did not become ready within 180 seconds. See $logDir and the latest Unreal crash report." }
+        if (-not $ready) { throw "CARLA did not become ready within $StartupTimeoutSeconds seconds. See $logDir and the latest Unreal crash report, or retry with -StartupTimeoutSeconds 900." }
 
         $env:PYTHONPATH = "$appRoot\app;$env:PYTHONPATH"
         if ($mapCockpit) {

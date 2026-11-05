@@ -58,6 +58,13 @@ class NeuralVisualizerTests(unittest.TestCase):
             self.assertEqual(state['runtime']['applied']['brake'], 1)
             with urlopen(visual.url) as response:
                 self.assertIn(b'Inside the driving network', response.read())
+            # Weights are served once from /model; the polled /state stays small.
+            self.assertNotIn('weights', state['model'])
+            self.assertEqual(state['model']['sizes'], [8, 24, 16, 3])
+            with urlopen(visual.url + 'model') as response:
+                served = json.load(response)
+            self.assertEqual(served['weights'], model.weights)
+            self.assertEqual(served['name'], 'test-policy.json')
         finally:
             visual.close()
 
@@ -237,6 +244,11 @@ class NeuralPageTests(unittest.TestCase):
         self.assertIn('waitLive=isLive;renderWait()', self.script)
         self.assertIn('shown=!!t&&connected&&waitLive', self.script)
         self.assertEqual(self.script.count('trackWait(frame)'), 2)
+
+    def test_weights_are_fetched_once_not_on_every_poll(self):
+        self.assertIn("fetch('/model'", self.script)
+        self.assertIn('if(identity!==weightsFor)await loadWeights(identity)', self.script)
+        self.assertIn('state.model.weights=weights', self.script)
 
     def test_existing_layout_is_intact(self):
         for element_id in ('status', 'freeze', 'model', 'architecture', 'network', 'direction',

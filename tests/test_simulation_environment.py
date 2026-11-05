@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 
 from simulation.environment import (state_input_world, require_idle_world,
     cleanup_actions, paced_tick, input_heartbeat_ready, write_input_heartbeat,
-    prepare_state_world, carla_rpc_probe)
+    prepare_state_world, carla_rpc_probe, tick_with_patience, wait_for_carla)
 
 
 class InputEnvironmentTests(unittest.TestCase):
@@ -120,6 +120,85 @@ class InputEnvironmentTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'Another client'):
             prepare_state_world(client, carla, 'Town05')
         client.load_world.assert_not_called()
+
+class PatientTickTests(unittest.TestCase):
+    def test_returns_the_frame_when_the_first_tick_succeeds(self):
+        world = Mock()
+        world.tick.return_value = 42
+        stalls = []
+        self.assertEqual(tick_with_patience(world, 2.0, max_wait_s=10.0, on_stall=stalls.append), 42)
+        world.tick.assert_called_once_with(2.0)
+        self.assertEqual(stalls, [])
+
+    def test_slow_frames_are_retried_and_reported_until_one_arrives(self):
+        world = Mock()
+        world.tick.side_effect = [RuntimeError('time-out of 2000ms'), RuntimeError('time-out of 2000ms'), 7]
+        now = [0.0]
+
+        def clock():
+            now[0] += 2.0
+            return now[0]
+        stalls = []
+        self.assertEqual(tick_with_patience(world, 2.0, max_wait_s=30.0, on_stall=stalls.append, clock=clock), 7)
+        self.assertEqual(world.tick.call_count, 3)
+        self.assertEqual(len(stalls), 2)
+        self.assertTrue(all(0 < value < 30 for value in stalls))
+
+    def test_gives_up_after_the_ceiling_with_the_simulator_error_attached(self):
+        world = Mock()
+        world.tick.side_effect = RuntimeError('time-out of 2000ms')
+        now = [0.0]
+
+        def clock():
+            now[0] += 20.0
+            return now[0]
+        with self.assertRaisesRegex(RuntimeError, 'no frame for') as raised:
+            tick_with_patience(world, 2.0, max_wait_s=30.0, clock=clock)
+        self.assertIsInstance(raised.exception.__cause__, RuntimeError)
+        self.assertLessEqual(world.tick.call_count, 3)
+
+    def test_rejects_invalid_timeouts(self):
+        for timeout, ceiling in ((0, 10), (float('nan'), 10), (2, 0), (2, float('inf'))):
+            with self.subTest(timeout=timeout, ceiling=ceiling), self.assertRaises(ValueError):
+                tick_with_patience(Mock(), timeout, max_wait_s=ceiling)
+
+
+class WaitForCarlaTests(unittest.TestCase):
+    def test_returns_as_soon_as_the_probe_answers(self):
+        answers = iter([False, False, True])
+        slept = []
+        now = [0.0]
+
+        def clock():
+            return now[0]
+
+        def sleep(seconds):
+            slept.append(seconds)
+            now[0] += seconds
+        self.assertTrue(wait_for_carla(seconds=15.0, interval_s=2.0, probe=lambda h, p: next(answers),
+                                       clock=clock, sleep=sleep))
+        self.assertEqual(slept, [2.0, 2.0])
+
+    def test_gives_up_when_the_budget_runs_out(self):
+        now = [0.0]
+
+        def sleep(seconds):
+            now[0] += seconds
+        self.assertFalse(wait_for_carla(seconds=5.0, interval_s=2.0, probe=lambda h, p: False,
+                                        clock=lambda: now[0], sleep=sleep))
+        self.assertGreaterEqual(now[0], 5.0)
+
+    def test_zero_budget_still_probes_once(self):
+        calls = []
+        self.assertTrue(wait_for_carla(seconds=0.0, probe=lambda h, p: calls.append((h, p)) or True,
+                                       sleep=lambda s: self.fail('must not sleep')))
+        self.assertEqual(calls, [('127.0.0.1', 2000)])
+
+    def test_rejects_invalid_budget(self):
+        for seconds, interval in ((-1, 2), (float('nan'), 2), (5, 0)):
+            with self.subTest(seconds=seconds, interval=interval), self.assertRaises(ValueError):
+                wait_for_carla(seconds=seconds, interval_s=interval, probe=lambda h, p: True)
+
 
 if __name__ == '__main__':
     unittest.main()
