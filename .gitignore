@@ -1,25 +1,38 @@
+# Python
 __pycache__/
 *.py[cod]
+.venv/
+.env
+.env.*
+!.env.example
+
+# Runtime output and data
 logs/
 episodes/
 exports/
 backups/
 colab_artifacts/
 artifacts/
-Claude outputs/
-.claude/
-.codex/
-**/run/*.url
 checkpoints/
 runs/
-.venv/
-.env
-.env.*
-!.env.example
-credentials/
-handoff/
 cache/
-transfer/
-transfer-setup.log
-transfer-diagnostics.log
-**/.obsidian/workspace*.json
+**/run/*.url
+*.log
+
+# Secrets, archives and simulator installations
+credentials/
+*.pem
+*.key
+*.pfx
+*.p12
+*.zip
+carla_env/
+CARLA_*/
+
+# Local editor and agent state
+.claude/
+.codex/
+.agents/
+.vscode/
+*.local.json
+**/.obsidian/

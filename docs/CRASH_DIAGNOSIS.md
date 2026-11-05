@@ -1,5 +1,7 @@
 # CARLA crash investigation — 2026-09-10
 
+> Historical record. File names in this document predate the current layout: `run_practice.ps1` is now `scripts/launch.ps1`, `spawn_car.py` is `app/neural_cockpit.py`, and the `run_practice.cmd`, `run_light_3d.cmd` and `launch_carla_ui.cmd` launchers were replaced by `run_neural.cmd` (optionally `-Lightweight`). The measurements and conclusions still apply.
+
 ## 2026-10-06 update: RGB cameras work under DX12, not DX11
 
 Bounded probes (own server, Town02_Opt, Epic, offscreen, Intel Arc 140V, driver
