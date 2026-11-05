@@ -8,7 +8,10 @@ from pathlib import Path
 
 import numpy as np
 
-CARLA_ROOT = Path(os.environ["USERPROFILE"]) / "Documents/CARLA/CARLA_0.9.16"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app"))
+from runtime.paths import carla_root as _carla_root  # noqa: E402
+
+CARLA_ROOT = _carla_root()  # CARLA_ROOT variable or config/runtime.json
 sys.path.insert(0, str(CARLA_ROOT / "PythonAPI/carla"))
 import carla  # noqa: E402
 

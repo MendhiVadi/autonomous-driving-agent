@@ -1,19 +1,18 @@
 # Application code
 
-The files directly in this folder are command entry points. Shared behavior
-belongs to the packages below; scripts and tools add this app directory to
-their own process's imports.
+`manual_drive.py` (full-graphics manual car), `neural_cockpit.py` (neural
+cockpit entry point) and `collect_expert_data.py` (training-data recorder)
+are the processes `scripts/launch.ps1` starts. Shared behaviour lives in the
+packages below; scripts and tools add this directory to their own imports.
 
 | Package | Owns |
 | --- | --- |
-| cockpit | Interactive session, command-line options, input, navigation and graphics helpers |
-| vehicle | Commands, transmission and final safety arbitration |
-| simulation | World lifecycle, observations, routes and road geometry |
-| learning | Existing imitation policy, model contract, assistance and diagnostic scores |
-| runtime | Paths, health, process lease, watchdog, archive validation, gesture input |
-| telemetry | Episode recording, diagnostic reports and read-only activity page |
+| cockpit | Interactive session, command-line options, keyboard input, map navigation, HUD, route recovery, camera helpers |
+| vehicle | Vehicle commands, transmission model and the final safety supervisor |
+| simulation | World lifecycle, large-map loading, observations, road geometry, RPC liveness probe |
+| learning | Network, input contract and bounded assistance |
+| runtime | Paths, hardware health, command watchdog, map archive validation |
+| telemetry | Episode recording and the read-only network activity page |
 
-The remaining cockpit session is orchestration for the existing UI. Further
-renderer/event-loop extraction should preserve its current behavior and be
-validated with a live cockpit trial. New reinforcement-learning code does
-not belong in these legacy packages.
+`cockpit/session.py` is still a large orchestration module; split it only with
+a live cockpit trial on the real machine to confirm behaviour is unchanged.

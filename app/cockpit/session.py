@@ -18,7 +18,7 @@ from learning.assistance import (apply_stall_recovery, is_stall_candidate, limit
 from learning.contract import POLICY_CONTRACT_VERSION, normalize_features
 from vehicle.safety import SafetyLimits, SafetySupervisor
 from runtime.watchdog import CommandWatchdog
-from simulation.environment import require_idle_world, cleanup_actions
+from simulation.environment import LARGE_MAPS, require_idle_world, cleanup_actions
 from simulation.roads import build_road_segments, RoadSegmentIndex
 from vehicle.transmission import (
     EngineRpmEstimator,
@@ -45,8 +45,6 @@ from cockpit.world import vehicle_speed_kmh, nearest_distances, try_spawn_vehicl
 from cockpit.viewport_input import FocusedDrivingKeys, ScriptedDrivingKeys, parse_key_schedule
 from cockpit import hud, recovery
 
-
-LARGE_MAPS = {"Town11", "Town12", "Town13"}
 
 
 def main():
@@ -525,7 +523,7 @@ def main():
             # A freshly spawned car is still dropping onto the road; alignment
             # (and the diagnostic flip below) need it stationary.
             vehicle.apply_control(carla.VehicleControl(brake=1.0, hand_brake=True))
-            advance_world = (lambda: world.tick(args.runtime_rpc_timeout)) if world_is_synchronous                 else (lambda: world.wait_for_tick(args.runtime_rpc_timeout))
+            advance_world = (lambda: world.tick(args.runtime_rpc_timeout)) if world_is_synchronous else (lambda: world.wait_for_tick(args.runtime_rpc_timeout))
             if wait_until_settled(lambda: vehicle_speed_kmh(vehicle), advance_world):
                 print("[route] vehicle settled before planning", flush=True)
             else:

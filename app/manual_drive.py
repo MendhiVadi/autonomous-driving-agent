@@ -1,4 +1,10 @@
-"""One manual car in the native CARLA viewport; no camera sensors or model."""
+"""One manual car in CARLA's own full-graphics window; no cameras, no model.
+
+This is the "normal car you can drive" mode. CARLA renders the scene itself at
+Epic quality; this process only spawns the car, reads the keyboard while the
+CARLA window has focus, follows it with the spectator camera and keeps a
+watchdog that brakes if control publication ever stalls.
+"""
 import argparse
 import ctypes
 from ctypes import wintypes
@@ -7,7 +13,11 @@ import math
 import time
 
 from runtime.watchdog import CommandWatchdog
-from simulation.environment import require_idle_world, cleanup_actions
+from simulation.environment import (LARGE_MAP_LOAD_TIMEOUT_S, cleanup_actions, is_large_map,
+                                    load_world_for_driving, warm_up_large_map_tiles)
+
+FRAME_RATE = 30.0
+WIND_INTENSITY = 65.0
 
 
 class ViewportKeyboard:
@@ -44,24 +54,25 @@ def steering_step(previous, direction, dt):
     return math.copysign(max(0.0, abs(previous) - step * 2.0), previous)
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--map', default='Town02_Opt')
     parser.add_argument('--server-pids', type=int, nargs='+', required=True)
     parser.add_argument('--max-runtime-seconds', type=float, default=0)
     parser.add_argument('--spawn-index', type=int, default=0)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if not math.isfinite(args.max_runtime_seconds) or args.max_runtime_seconds < 0:
         parser.error('Runtime must be finite and non-negative')
     import carla
     client = carla.Client('127.0.0.1', 2000)
-    client.set_timeout(60)
-    world = client.get_world()
-    require_idle_world(world)
-    if world.get_map().name.rsplit('/', 1)[-1].lower() != args.map.rsplit('/', 1)[-1].lower():
-        world = client.load_world(args.map, map_layers=carla.MapLayer.All)
-    elif args.map.endswith('_Opt'):
-        world.load_map_layer(carla.MapLayer.All)
+    large_map = is_large_map(args.map)
+    # Town13 streams a 10 x 10 km world and can take minutes on an integrated GPU.
+    client.set_timeout(LARGE_MAP_LOAD_TIMEOUT_S if large_map else 60.0)
+    if large_map:
+        print(f"[map] {args.map}: large map; loading can take a few minutes", flush=True)
+    world = load_world_for_driving(client, args.map, carla)
+    client.set_timeout(60.0)
+    print(f"[map] loaded {world.get_map().name}", flush=True)
     original_settings, original_weather = world.get_settings(), world.get_weather()
     vehicle = None
     watchdog = CommandWatchdog(timeout_s=0.75)
@@ -69,14 +80,14 @@ def main():
         settings = world.get_settings()
         settings.no_rendering_mode = False
         settings.synchronous_mode = True
-        settings.fixed_delta_seconds = 1.0 / 30.0
+        settings.fixed_delta_seconds = 1.0 / FRAME_RATE
         settings.substepping = True
         settings.max_substep_delta_time = 0.01
         settings.max_substeps = 10
         world.apply_settings(settings)
         world.set_weather(carla.WeatherParameters(
             cloudiness=20, precipitation=0, precipitation_deposits=0,
-            wind_intensity=65, sun_altitude_angle=45, fog_density=0, wetness=0))
+            wind_intensity=WIND_INTENSITY, sun_altitude_angle=45, fog_density=0, wetness=0))
         blueprint = world.get_blueprint_library().find('vehicle.ford.mustang')
         blueprint.set_attribute('role_name', 'hero')
         spawn_points = world.get_map().get_spawn_points()
@@ -88,17 +99,19 @@ def main():
                 break
         if vehicle is None:
             raise RuntimeError('No free vehicle spawn point')
+        warm_up_large_map_tiles(world, vehicle, client, carla, args.map)
         brake = lambda: vehicle.apply_control(carla.VehicleControl(brake=1.0, hand_brake=True))
         watchdog.start(brake)
         keyboard = ViewportKeyboard(args.server_pids)
         spectator = world.get_spectator()
-        client.set_timeout(3)
+        # Large maps keep streaming tiles while driving; allow a slower frame.
+        client.set_timeout(10.0 if large_map else 3.0)
         reverse, bonnet, steer = False, False, 0.0
         previous_r, previous_c = False, False
         started = previous_time = last_report = time.monotonic()
         frames = 0
-        print('[scenic] one car; native viewport; Epic scenery; wind=65; no sensors or neural model', flush=True)
-        print('[scenic] Click CARLA. WASD/arrows drive; Space handbrake; R reverse; C view; Esc exit.', flush=True)
+        print(f'[manual] one car; native viewport; Epic scenery; wind={WIND_INTENSITY:g}; no sensors or neural model', flush=True)
+        print('[manual] Click CARLA. WASD/arrows drive; Space handbrake; R reverse; C view; Esc exit.', flush=True)
         while not args.max_runtime_seconds or time.monotonic() - started < args.max_runtime_seconds:
             tick_started = time.monotonic()
             dt, previous_time = tick_started - previous_time, tick_started
@@ -121,7 +134,7 @@ def main():
                                           reverse=reverse, hand_brake=focused and keyboard.down(0x20))
             vehicle.apply_control(control)
             watchdog.command_received()
-            world.tick(3)
+            world.tick(10 if large_map else 3)
             transform = vehicle.get_transform()
             forward = transform.get_forward_vector()
             offset, height, pitch = (1.0, 1.35, -3) if bonnet else (-7.0, 3.2, -12)
@@ -130,11 +143,11 @@ def main():
                 carla.Rotation(pitch=pitch, yaw=transform.rotation.yaw)))
             frames += 1
             if tick_started - last_report >= 5:
-                print('[scenic] ' + json.dumps({'fps': round(frames / (tick_started - last_report), 1),
+                print('[manual] ' + json.dumps({'fps': round(frames / (tick_started - last_report), 1),
                     'speed_kmh': round(speed, 1), 'focused': focused,
                     'view': 'bonnet' if bonnet else 'chase', 'gear': 'R' if reverse else 'D'}), flush=True)
                 last_report, frames = tick_started, 0
-            time.sleep(max(0, 1.0 / 30.0 - (time.monotonic() - tick_started)))
+            time.sleep(max(0, 1.0 / FRAME_RATE - (time.monotonic() - tick_started)))
     finally:
         actions = [('stop watchdog', watchdog.stop)]
         if vehicle is not None:

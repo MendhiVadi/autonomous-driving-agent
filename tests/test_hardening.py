@@ -1,4 +1,4 @@
-"""Behavioral regressions for unsafe boundaries found during Finish R1 review."""
+"""Regression tests for control validation, archives and hardware guards."""
 import io
 import math
 from pathlib import Path
@@ -11,10 +11,7 @@ import zipfile
 from vehicle.control import VehicleCommand
 from runtime.watchdog import CommandWatchdog, LinkWatchdog
 from vehicle.safety import SafetySupervisor, SafetyLimits
-from runtime.gesture import GestureBiasReceiver, policy_bias_from_payload
-from agent_drive import command_from_payload
 from runtime.archive import install
-from stack_supervisor import Supervisor, terminate_tree
 
 class HardeningTests(unittest.TestCase):
     def state(self, **updates):
@@ -47,17 +44,8 @@ class HardeningTests(unittest.TestCase):
     def test_nan_infinity_and_nonpositive_watchdog_configuration_rejected(self):
         for value in (math.nan, math.inf, -math.inf, 0, -1):
             for factory in (lambda:CommandWatchdog(value), lambda:CommandWatchdog(poll_interval_s=value),
-                            lambda:LinkWatchdog(value), lambda:SafetyLimits(stale_command_after_s=value),
-                            lambda:GestureBiasReceiver(stale_after_s=value)):
+                            lambda:LinkWatchdog(value), lambda:SafetyLimits(stale_command_after_s=value)):
                 with self.subTest(value=value), self.assertRaises(ValueError): factory()
-
-    def test_invalid_control_never_becomes_full_throttle(self):
-        for field in ('accelerator','brake','clutch','steering_angle_deg','gear'):
-            for value in (math.nan,math.inf,-math.inf):
-                with self.subTest(field=field,value=value), self.assertRaises(ValueError):
-                    command_from_payload({field:value})
-        for payload in ([],None,{'hand_brake':'false'},{'accelerator':True},{'gear':1.5},{'unknown':1}):
-            with self.assertRaises(ValueError): command_from_payload(payload)
 
     def test_watchdog_retries_failed_emergency_brake(self):
         delivered=threading.Event()
@@ -73,22 +61,6 @@ class HardeningTests(unittest.TestCase):
             try: self.assertTrue(delivered.wait(1))
             finally: watchdog.stop()
         self.assertGreaterEqual(len(calls),2)
-
-    def test_gestures_cannot_bind_lan_or_accept_nonobject_tracking(self):
-        for host in ('0.0.0.0','10.42.0.2','192.168.1.1'):
-            with self.assertRaises(ValueError): GestureBiasReceiver(host=host)
-        for payload in (None,[],2,'bad',{'tracking':'false','bias':{'turn_left':.1}}):
-            self.assertFalse(policy_bias_from_payload(payload).active)
-
-    def test_startup_never_kills_an_unowned_process(self):
-        supervisor=Supervisor([],Path(tempfile.gettempdir()),thermal_guard=False)
-        with patch('stack_supervisor.find_orphans',return_value=[987654]), patch('stack_supervisor.terminate_tree') as kill:
-            with self.assertRaisesRegex(RuntimeError,'unowned'): supervisor.sweep_orphans()
-            kill.assert_not_called()
-
-    def test_tree_termination_reports_failed_system_call(self):
-        with patch('stack_supervisor.sys.platform','win32'), patch('stack_supervisor.subprocess.run',return_value=Mock(returncode=1)):
-            self.assertFalse(terminate_tree(987654))
 
     def test_map_archive_rejects_traversal_before_any_write(self):
         for name in ('../outside','CarlaUE4/Content/../../outside','C:/outside','CarlaUE4/Content/NUL.txt'):
@@ -146,20 +118,6 @@ class AdditionalBoundaryTests(unittest.TestCase):
                     urlopen(Request(visual.url+'state',headers=headers),timeout=2)
                 self.assertEqual(raised.exception.code,code)
         finally: visual.close()
-
-    def test_runtime_lease_blocks_a_second_session_and_releases(self):
-        from runtime.lease import runtime_lease
-        errors=[]
-        def contender():
-            try:
-                with runtime_lease(): pass
-            except RuntimeError as exc: errors.append(str(exc))
-        with runtime_lease():
-            thread=threading.Thread(target=contender);thread.start();thread.join(2)
-            self.assertFalse(thread.is_alive())
-        self.assertEqual(len(errors),1)
-        with runtime_lease(): pass
-
 
 class HardwareGuardTests(unittest.TestCase):
     def test_unreadable_or_malformed_log_blocks_start(self):

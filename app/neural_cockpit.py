@@ -1,4 +1,4 @@
-"""Stable command entry point for the local CARLA cockpit."""
+"""Command entry point for the neural-driving cockpit (small and large maps)."""
 import sys
 
 from cockpit.session import main

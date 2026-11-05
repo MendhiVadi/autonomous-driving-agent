@@ -1,9 +1,11 @@
 """Exercise the actual PowerShell startup checks without launching CARLA."""
 from pathlib import Path
+import shutil
 import subprocess
 import unittest
 
 
+@unittest.skipUnless(shutil.which('powershell.exe'), 'Windows PowerShell is not available')
 class LauncherStartupTests(unittest.TestCase):
     def run_check(self, body):
         helper = Path(__file__).resolve().parents[1] / 'scripts/carla_startup_state.ps1'

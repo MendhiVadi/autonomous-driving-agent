@@ -6,7 +6,7 @@ import unittest
 import carla
 from simulation.observations import (make_observation)
 from simulation.roads import build_road_segments, RoadSegmentIndex
-from scenic_drive import steering_step
+from manual_drive import steering_step
 from simulation.environment import prepare_state_world
 
 

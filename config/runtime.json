@@ -2,6 +2,6 @@
   "carla_root": "%USERPROFILE%/Documents/CARLA/CARLA_0.9.16",
   "legacy_policy_candidates": [
     "nn_policy_colab.json",
-    "exports/preliminary-network-20260910-150651/nn_policy_preliminary.json"
+    "nn_policy_bootstrap.json"
   ]
 }
