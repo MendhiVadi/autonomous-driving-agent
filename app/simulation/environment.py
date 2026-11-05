@@ -86,6 +86,30 @@ def paced_tick(world, timeout_s, started_at=None):
     return frame
 
 
+def tick_with_patience(world, timeout_s, max_wait_s=60.0, on_stall=None, clock=time.monotonic):
+    """Advance one synchronous frame, treating a slow frame as slow rather than dead.
+
+    On an integrated GPU a frame can take longer than ``timeout_s`` while tiles
+    stream in or shaders compile. Instead of ending the session on the first
+    overdue frame, keep waiting until ``max_wait_s`` has passed in total, calling
+    ``on_stall(elapsed_s)`` after each overdue attempt so the caller can log and
+    hold the brakes (the command watchdog already does the braking). The last
+    simulator error is re-raised once the ceiling is reached.
+    """
+    if not math.isfinite(timeout_s) or timeout_s <= 0 or not math.isfinite(max_wait_s) or max_wait_s <= 0:
+        raise ValueError("tick timeouts must be finite and positive")
+    started = clock()
+    while True:
+        try:
+            return world.tick(timeout_s)
+        except RuntimeError as exc:
+            elapsed = clock() - started
+            if elapsed >= max_wait_s:
+                raise RuntimeError(f"simulator produced no frame for {elapsed:.0f} s: {exc}") from exc
+            if on_stall is not None:
+                on_stall(elapsed)
+
+
 def write_input_heartbeat(path, frame):
     if not path:
         return
@@ -173,6 +197,26 @@ def warm_up_large_map_tiles(world, vehicle, client, carla, map_name=None):
     finally:
         client.set_timeout(5)
     print(f"[map] {name}: tile warm-up complete; full rendering remains enabled", flush=True)
+
+
+def wait_for_carla(host="127.0.0.1", port=2000, seconds=15.0, interval_s=2.0,
+                   probe=None, clock=time.monotonic, sleep=time.sleep):
+    """Poll the simulator inside one process for up to ``seconds``.
+
+    The launcher used to start a new Python process (and import the CARLA
+    client) every few seconds while Unreal was still booting. Returns True as
+    soon as the server answers, False when the budget runs out.
+    """
+    if not math.isfinite(seconds) or seconds < 0 or not math.isfinite(interval_s) or interval_s <= 0:
+        raise ValueError("wait budget and interval must be finite and non-negative")
+    probe = carla_rpc_probe if probe is None else probe
+    deadline = clock() + seconds
+    while True:
+        if probe(host, port):
+            return True
+        if clock() >= deadline:
+            return False
+        sleep(interval_s)
 
 
 def carla_rpc_probe(host, port, timeout_s=3.0):

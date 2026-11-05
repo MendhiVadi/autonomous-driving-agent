@@ -14,7 +14,7 @@ import time
 
 from runtime.watchdog import CommandWatchdog
 from simulation.environment import (LARGE_MAP_LOAD_TIMEOUT_S, cleanup_actions, is_large_map,
-                                    load_world_for_driving, warm_up_large_map_tiles)
+                                    load_world_for_driving, tick_with_patience, warm_up_large_map_tiles)
 
 FRAME_RATE = 30.0
 WIND_INTENSITY = 65.0
@@ -67,7 +67,7 @@ def main(argv=None):
     client = carla.Client('127.0.0.1', 2000)
     large_map = is_large_map(args.map)
     # Town13 streams a 10 x 10 km world and can take minutes on an integrated GPU.
-    client.set_timeout(LARGE_MAP_LOAD_TIMEOUT_S if large_map else 60.0)
+    client.set_timeout(LARGE_MAP_LOAD_TIMEOUT_S if large_map else 120.0)
     if large_map:
         print(f"[map] {args.map}: large map; loading can take a few minutes", flush=True)
     world = load_world_for_driving(client, args.map, carla)
@@ -104,8 +104,13 @@ def main(argv=None):
         watchdog.start(brake)
         keyboard = ViewportKeyboard(args.server_pids)
         spectator = world.get_spectator()
-        # Large maps keep streaming tiles while driving; allow a slower frame.
-        client.set_timeout(10.0 if large_map else 3.0)
+        # Large maps keep streaming tiles while driving; allow a slower frame. A frame
+        # that is merely late is retried (brakes held by the watchdog meanwhile).
+        frame_timeout = 10.0 if large_map else 5.0
+        client.set_timeout(frame_timeout)
+
+        def report_slow_frame(elapsed_s):
+            print(f'[manual] simulator frame overdue for {elapsed_s:.0f} s; holding the brakes and waiting', flush=True)
         reverse, bonnet, steer = False, False, 0.0
         previous_r, previous_c = False, False
         started = previous_time = last_report = time.monotonic()
@@ -134,7 +139,7 @@ def main(argv=None):
                                           reverse=reverse, hand_brake=focused and keyboard.down(0x20))
             vehicle.apply_control(control)
             watchdog.command_received()
-            world.tick(10 if large_map else 3)
+            tick_with_patience(world, frame_timeout, max_wait_s=60.0, on_stall=report_slow_frame)
             transform = vehicle.get_transform()
             forward = transform.get_forward_vector()
             offset, height, pitch = (1.0, 1.35, -3) if bonnet else (-7.0, 3.2, -12)

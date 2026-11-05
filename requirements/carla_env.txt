@@ -1,6 +1,7 @@
 # Installed into <CARLA_ROOT>\carla_env by scripts\setup_environment.ps1,
 # together with the CARLA client wheel bundled in PythonAPI\carla\dist.
-numpy<2.0.0
+numpy<2.0.0; python_version < "3.13"
+numpy>=2.1; python_version >= "3.13"
 pygame>=2.5
 networkx
 shapely

@@ -18,7 +18,7 @@ from learning.assistance import (apply_stall_recovery, is_stall_candidate, limit
 from learning.contract import POLICY_CONTRACT_VERSION, normalize_features
 from vehicle.safety import SafetyLimits, SafetySupervisor
 from runtime.watchdog import CommandWatchdog
-from simulation.environment import LARGE_MAPS, require_idle_world, cleanup_actions
+from simulation.environment import LARGE_MAPS, require_idle_world, cleanup_actions, tick_with_patience
 from simulation.roads import build_road_segments, RoadSegmentIndex
 from vehicle.transmission import (
     EngineRpmEstimator,
@@ -47,6 +47,11 @@ from cockpit import hud, recovery
 
 
 
+# A feed that stays silent this long while the world keeps ticking is a real
+# sensor failure; the HUD already labels feeds as stale after 2.5 s.
+CAMERA_STALL_ABORT_S = 30.0
+
+
 def main():
     args = parse_args()
     try:
@@ -55,9 +60,9 @@ def main():
         raise SystemExit("pygame is required: python -m pip install pygame")
 
     client = carla.Client(args.host, args.port)
-    # Map loading can exceed ten seconds on the low-power/low-quality setup.
-    # Keep the client alive long enough for Town05 to finish switching.
-    client.set_timeout(45.0)
+    # Loading a town with every scenery layer can take well over a minute on a
+    # laptop disk; large maps raise this further below.
+    client.set_timeout(120.0)
     print("[startup] CARLA client connected", flush=True)
     world = client.get_world()
     require_idle_world(world)
@@ -191,9 +196,10 @@ def main():
                     transform.location + carla.Location(
                         x=-7.0 * forward.x, y=-7.0 * forward.y, z=3.2),
                     carla.Rotation(pitch=-12, yaw=transform.rotation.yaw)))
-                world.tick(60)
+                tick_with_patience(world, 60, max_wait_s=300.0, on_stall=lambda elapsed: print(
+                    f"[map] tile warm-up still running after {elapsed:.0f} s", flush=True))
                 for _ in range(3):
-                    world.tick(10)
+                    tick_with_patience(world, 10, max_wait_s=120.0)
             finally:
                 client.set_timeout(10.0)
             print("[map] nearby tiles warmed; complete scenery remains enabled", flush=True)
@@ -331,6 +337,10 @@ def main():
         # timeout.  The interactive loop does not: a dead server must release
         # the cockpit promptly instead of leaving a frozen, all-black window.
         client.set_timeout(args.runtime_rpc_timeout)
+        spectator = world.get_spectator() if (args.full_graphics and args.camera_profile == "map") else None
+
+        def report_slow_frame(elapsed_s):
+            print(f"[runtime] simulator frame overdue for {elapsed_s:.0f} s; brakes held, waiting", flush=True)
 
         border = 4
         last_scaled_frames = {}
@@ -523,7 +533,9 @@ def main():
             # A freshly spawned car is still dropping onto the road; alignment
             # (and the diagnostic flip below) need it stationary.
             vehicle.apply_control(carla.VehicleControl(brake=1.0, hand_brake=True))
-            advance_world = (lambda: world.tick(args.runtime_rpc_timeout)) if world_is_synchronous else (lambda: world.wait_for_tick(args.runtime_rpc_timeout))
+            advance_world = ((lambda: tick_with_patience(world, args.runtime_rpc_timeout, max_wait_s=90.0,
+                                                          on_stall=report_slow_frame))
+                             if world_is_synchronous else (lambda: world.wait_for_tick(args.runtime_rpc_timeout)))
             if wait_until_settled(lambda: vehicle_speed_kmh(vehicle), advance_world):
                 print("[route] vehicle settled before planning", flush=True)
             else:
@@ -1289,11 +1301,11 @@ def main():
                 })
 
             if args.camera_profile == "map" or args.low_scenery or args.presentation or paced_camera_world:
-                world.tick(args.runtime_rpc_timeout)
-            if args.full_graphics and args.camera_profile == "map":
+                tick_with_patience(world, args.runtime_rpc_timeout, max_wait_s=90.0, on_stall=report_slow_frame)
+            if spectator is not None:
                 transform = vehicle.get_transform()
                 forward = transform.get_forward_vector()
-                world.get_spectator().set_transform(carla.Transform(
+                spectator.set_transform(carla.Transform(
                     transform.location + carla.Location(
                         x=-7.0 * forward.x, y=-7.0 * forward.y, z=3.2),
                     carla.Rotation(pitch=-12, yaw=transform.rotation.yaw)))
@@ -1368,9 +1380,14 @@ def main():
                 if args.camera_profile == "parking":
                     draw_frame("rear", rear_rect, crop_to_fill=True)
             if frame_number - actor_refresh_frame >= max(1, args.target_fps // 2):
-                all_actors = world.get_actors()
-                cached_actors = list(all_actors.filter("vehicle.*")) + list(all_actors.filter("walker.*"))
                 actor_refresh_frame = frame_number
+                try:
+                    all_actors = world.get_actors()
+                except RuntimeError as exc:
+                    # Keep the previous list; the minimap and mirror distances are cosmetic.
+                    print(f"[runtime] actor refresh skipped while the simulator is busy: {exc}", flush=True)
+                else:
+                    cached_actors = list(all_actors.filter("vehicle.*")) + list(all_actors.filter("walker.*"))
                 minimap_surface = render_minimap((map_rect[2], map_rect[3]), cached_actors)
                 cached_distances = nearest_distances(vehicle, world, cached_actors)
             if args.camera_profile == "map":
@@ -1493,7 +1510,7 @@ def main():
                 required_views = () if args.camera_profile == "map" else (("front", "rear", "left", "right") if args.camera_profile == "parking" else ("front", "left", "right") if args.camera_profile == "triple" else ("front",))
                 with camera_lock:
                     stale_views = [name for name in required_views
-                                   if time.monotonic() - camera_last_frame_at.get(name, run_started_at) > 10.0]
+                                   if time.monotonic() - camera_last_frame_at.get(name, run_started_at) > CAMERA_STALL_ABORT_S]
                 if stale_views:
                     raise RuntimeError("Camera stream stalled: " + ", ".join(stale_views))
                 with camera_lock:
